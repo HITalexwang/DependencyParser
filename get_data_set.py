@@ -188,13 +188,16 @@ class Parser:
 		self.word_ids={}
 		self.label_ids={}
 		self.pos_ids={}
+		self.pre_computed_ids={}
 		self.delexicalized=False
 		self.use_postag=True
 		self.labeled=True
 		self.num_tokens=48
 		self.embedding_size=10
 		self.num_pre_computed=100000
-		self.hidden_size=2
+		self.hidden_size=50
+		self.pos_emb_size=10
+		self.label_emb_size=10
 
 	def load_file(self,file,sents,trees,labeled):
 		sent=DependencySent()
@@ -362,7 +365,7 @@ class Parser:
 		print "create classifier"
 		#classifier=NNClassifier(dataset,Eb,W1,b1,W2,self.pre_computed_ids)
 		(features,labels)=self.preprocess_dataset(dataset)
-		self.classifier=MLP.MLP([self.embedding_size*self.num_tokens,self.hidden_size,n_actions],Eb,W1,b1,W2,features,labels)
+		self.classifier=MLP.MLP([self.embedding_size*self.num_tokens,self.hidden_size,n_actions],Eb,W1,b1,W2,self.pre_computed_ids,features,labels)
 
 	def preprocess_dataset(self,dataset):
 		features=[]
@@ -414,10 +417,11 @@ class Parser:
 		real_size=min(len(temp),self.num_pre_computed)
 		cnt=0
 		for t in temp:
-			self.pre_computed_ids.append(t)
+			self.pre_computed_ids.append(t[0])
 			cnt+=1
 			if cnt>=real_size:
 				break
+		#print self.pre_computed_ids
 		return ds_train
 
 
@@ -612,6 +616,7 @@ class Parser:
 		trees=[]
 		self.load_file('en-universal-dev-brown.conll',sents,trees,True)#en-universal-dev-brown.conll
 		self.print_tree_states(trees)
+
 		(embed_ids,embeddings)=self.read_embed_file('embeds')#word_embeddings.txt
 		(known_words,known_poss,known_labels)=self.gen_dictionaries(sents,trees,True)
 		ldict=known_labels
@@ -637,6 +642,10 @@ class Parser:
 		test_sents=[]
 		test_trees=[]
 		self.load_file(test_filename,test_sents,test_trees,True)#en-universal-dev-brown.conll
+
+		#test_sents=sent
+		#test_trees=tree
+
 		self.print_tree_states(test_trees)
 		n_sents=len(test_sents)
 		predicted=[]
