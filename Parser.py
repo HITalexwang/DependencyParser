@@ -193,7 +193,7 @@ class Parser:
 		self.use_postag=True
 		self.labeled=True
 		self.num_tokens=48
-		self.embedding_size=30
+		self.embedding_size=50
 		self.num_pre_computed=100000
 		self.hidden_size=50
 		self.pos_emb_size=10

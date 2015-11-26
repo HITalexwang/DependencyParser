@@ -4,6 +4,7 @@ import numpy as np
 import os
 import time
 import threading
+import multiprocessing
 
 class Cost:
     def __init__(self,grad_Eb,grad_W1,grad_b1,grad_W2,loss,correct):
@@ -34,7 +35,7 @@ class MLP(object):
         self.batch_size=10000 #10000
         self.alpha=0.01
         self.ada_eps=1.0e-6
-        self.training_threads=1
+        self.training_threads=10
         self.trunk_size=self.batch_size/self.training_threads
 
         if not pre_computed_ids==None:
@@ -71,7 +72,7 @@ class MLP(object):
             raw_in=raw_input("pause")
         return (sum1,sum2)
 
-    def backprop(self,mini_batch):
+    def backprop(self,mini_batch,costs):
         #print self.grad_w[1].shape
         loss=0.0
         correct=0
@@ -101,12 +102,18 @@ class MLP(object):
                 index=tok*self.num_tokens+j
                 if index in self.pre_map:
                     id=self.pre_map[index]
+                    """
                     for k in range(self.hidden_size):
                         hidden[k][0]+=self.saved[id][k]
+                    """
+                    hidden[:,0]+=np.transpose(self.saved[id][:])
                 else:
+                    """
                     for k in range(self.hidden_size):
                         for l in range(self.embed_size):
                             hidden[k][0]+=self.w[0][k][offset+l]*self.Eb[E_index][l]
+                    """
+                    hidden[:,0]+=np.dot(self.w[0][:,offset:offset+self.embed_size],np.transpose(self.Eb[E_index,:]))
                 offset+=self.embed_size
 
             time2=time.time()
@@ -165,11 +172,14 @@ class MLP(object):
                     #print self.grad_w[1].shape
                     #self.grad_w[1][i]+=delta*np.transpose(hidden3)
                     #self.grad_w[1][i]+=delta*hidden3
-                    #print hidden3.shape,self.grad_w[1][i].shape
+                    """
                     for j in range(self.hidden_size):
                         grad_w[1][i][j]+=delta*hidden3[j][0]
                         grad_hidden3[j][0]+=delta*self.w[1][i][j]
-                #print self.grad_w[1]
+                    """
+                    grad_w[1][i,:]+=delta*hidden3[:,0]
+                    grad_hidden3[:,0]+=delta*self.w[1][i,:]
+
 
             time7=time.time()
             #print "calculate delta used",time7-time6
@@ -178,10 +188,13 @@ class MLP(object):
             #print (np.transpose((hidden*hidden))).shape,grad_hidden3.shape
             #grad_hidden=3*np.dot(np.transpose((hidden*hidden)),grad_hidden3)
             #print grad_hidden.shape
+            """
             for j in range(self.hidden_size):
                 grad_hidden[j][0]=grad_hidden3[j][0]*3*hidden[j][0]*hidden[j][0]
                 grad_b[0][j][0]+=grad_hidden[j][0]
-
+            """
+            grad_hidden=grad_hidden3*3*hidden*hidden
+            grad_b[0]+=grad_hidden
             time8=time.time()
             #print "calculate grad hidden used",time8-time7
 
@@ -193,13 +206,20 @@ class MLP(object):
 
                 if index in self.pre_map:
                     id=self.pre_map[index]
+                    """
                     for k in range(self.hidden_size):
                         self.grad_saved[id][k]+=grad_hidden[k][0]
+                    """
+                    self.grad_saved[id,:]+=np.transpose(grad_hidden[:,0])
                 else:
+                    """
                     for k in range(self.hidden_size):
                         for l in range(self.embed_size):
                             grad_w[0][k][offset+l] +=grad_hidden[k][0] * self.Eb[E_index][l];
                             grad_Eb[E_index][l] +=grad_hidden[k][0] * self.w[0][k][offset+l];
+                    """
+                    grad_w[0][:,offset,offset+self.embed_size]+=np.outer(grad_hidden[:,0],self.Eb[E_index,:])
+                    grad_Eb[E_index,:]+=np.dot(np.transpose(grad_hidden[:,0]),self.w[0][:,offset,offset+self.embed_size])
                 offset+=self.embed_size
 
             time9=time.time()
@@ -208,7 +228,9 @@ class MLP(object):
         loss/=len(mini_batch)
         #accuracy=correct/float(mini_batch_size)
         cost=Cost(grad_Eb,grad_w[0],grad_b[0],grad_w[1],loss,correct)
-        self.costs.append(cost)
+        #self.costs.append(cost)
+        #costs.put((grad_Eb,grad_w[1],grad_b[0],loss,correct,grad_w[0]))
+        costs.put(cost)
 
     def add_l2_regularization(self):
         self.loss+=self.reg_parameter*np.sum(self.w[0]*self.w[0])/2.0
@@ -315,9 +337,12 @@ class MLP(object):
             offset=pos*self.embed_size
 
             E_index=tok
+            """
             for j in range(self.hidden_size):
                 for k in range(self.embed_size):
                     self.saved[map_x][j]+=self.Eb[E_index][k]*self.w[0][j][offset+k]
+            """
+            self.saved[map_x,:]=np.dot(self.w[0][:,offset:offset+self.embed_size],np.transpose(self.Eb[E_index,:]))
         print "pre_computed ",len(candidates)
 
     def back_prop_saved(self,features_seen):
@@ -328,11 +353,15 @@ class MLP(object):
             offset=pos*self.embed_size
 
             E_index=tok
+            self.grad_w[0][:,offset:offset+self.embed_size]=np.outer(self.grad_saved[map_x,:],self.Eb[E_index,:])
+            self.grad_Eb[E_index,:]+=np.dot(self.grad_saved[map_x,:],self.w[0][:,offset:offset+self.embed_size])
+            """
             for j in range(self.hidden_size):
                 delta=self.grad_saved[map_x][j]
                 for k in range(self.embed_size):
                     self.grad_w[0][j][offset+k]+=delta*self.Eb[E_index][k]
                     self.grad_Eb[E_index][k]+=delta*self.w[0][j][offset+k]
+            """
 
 
     def check_gradient(self,batch):
@@ -358,36 +387,38 @@ class MLP(object):
         time2=time.time()
         print "pre_compute:",time2-time1
         self.grad_saved*=0
-        """
+        
         trunks=[batch[j:j+self.trunk_size]
                          for j in range(0,len(batch),self.trunk_size)]
         time2_5=time.time()
         print "---trunks length:",len(trunks),"---"
-        thread_pool=[]
+        costs=multiprocessing.Queue(self.training_threads)
+        process_pool=[]
+        #lock = multiprocessing.Lock()
+        mgr=multiprocessing.Manager()
+        costs=mgr.Queue()
         try:
             for trunk in trunks:
-                th=threading.Thread(target=self.backprop,args=(trunk,))
-                thread_pool.append(th)
+                pr=multiprocessing.Process(target=self.backprop,args=(trunk,costs))
+                pr.start()
+                process_pool.append(pr)
         except:
             print "Error: unable to start thread"
-        for thread in thread_pool:
-            print "*thread"
-            thread.start()
-        for thread in thread_pool:
-            thread.join()
+        for process in process_pool:
+            process.join()
+
         print "#thread 10 time:",time.time()-time2_5
+
+        for i in range(len(trunks)):
+            self.costs.append(costs.get())
+        print "---costs length:",len(self.costs),"---"
+        #self.backprop(batch)
         for cost in self.costs:
             self.merge_cost(cost)
-        print "---costs length:",len(self.costs),"---"
         self.loss/=len(self.costs)
-        """
-        self.backprop(batch)
-        for cost in self.costs:
-            self.merge_cost(cost)
-        print "---costs length:",len(self.costs),"---"
-        self.loss/=len(self.costs)
+
         time3=time.time()
-        #print "back prop:",time3-time2
+        print "back prop:",time3-time2
         self.add_l2_regularization()
         print "loss:",self.loss,"\naccuracy:",float(self.correct)/len(batch)
         self.back_prop_saved(pre_computed_ids)
