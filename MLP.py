@@ -3,6 +3,16 @@ import random
 import numpy as np
 import os
 import time
+import threading
+
+class Cost:
+    def __init__(self,grad_Eb,grad_W1,grad_b1,grad_W2,loss,correct):
+        self.grad_Eb=grad_Eb
+        self.grad_W1=grad_W1
+        self.grad_W2=grad_W2
+        self.grad_b1=grad_b1
+        self.loss=loss
+        self.correct=correct
 
 class MLP(object):
     def __init__(self,size,Eb,W1,b1,W2,pre_computed_ids=None,features=None,labels=None):#size:[50*48,200,|transitions|]
@@ -24,6 +34,8 @@ class MLP(object):
         self.batch_size=10000 #10000
         self.alpha=0.01
         self.ada_eps=1.0e-6
+        self.training_threads=1
+        self.trunk_size=self.batch_size/self.training_threads
 
         if not pre_computed_ids==None:
             self.pre_computed_ids=pre_computed_ids
@@ -61,8 +73,12 @@ class MLP(object):
 
     def backprop(self,mini_batch):
         #print self.grad_w[1].shape
-        self.loss=0.0
-        self.correct=0
+        loss=0.0
+        correct=0
+        grad_w=[np.zeros(w.shape) for w in self.w]
+        grad_b=[np.zeros(b.shape) for b in self.b]
+        grad_Eb=np.zeros(self.Eb.shape)
+
         hidden=np.zeros([self.hidden_size,1])
         hidden3=np.zeros([self.hidden_size,1])
         grad_hidden=np.zeros([self.hidden_size,1])
@@ -138,9 +154,9 @@ class MLP(object):
             time6=time.time()
             #print "calculate softmax_log used",time6-time5
 
-            self.loss+=(np.log(sum2)-np.log(sum1))
+            loss+=(np.log(sum2)-np.log(sum1))
             if label[opt_label]==1:
-                self.correct+=1
+                correct+=1
             #compute gradient
             grad_hidden3*=0
             for i in range(self.num_labels):
@@ -151,7 +167,7 @@ class MLP(object):
                     #self.grad_w[1][i]+=delta*hidden3
                     #print hidden3.shape,self.grad_w[1][i].shape
                     for j in range(self.hidden_size):
-                        self.grad_w[1][i][j]+=delta*hidden3[j][0]
+                        grad_w[1][i][j]+=delta*hidden3[j][0]
                         grad_hidden3[j][0]+=delta*self.w[1][i][j]
                 #print self.grad_w[1]
 
@@ -164,7 +180,7 @@ class MLP(object):
             #print grad_hidden.shape
             for j in range(self.hidden_size):
                 grad_hidden[j][0]=grad_hidden3[j][0]*3*hidden[j][0]*hidden[j][0]
-                self.grad_b[0][j][0]+=grad_hidden[j][0]
+                grad_b[0][j][0]+=grad_hidden[j][0]
 
             time8=time.time()
             #print "calculate grad hidden used",time8-time7
@@ -182,17 +198,17 @@ class MLP(object):
                 else:
                     for k in range(self.hidden_size):
                         for l in range(self.embed_size):
-                            self.grad_w[0][k][offset+l] +=grad_hidden[k][0] * self.Eb[E_index][l];
-                            self.grad_Eb[E_index][l] +=grad_hidden[k][0] * self.w[0][k][offset+l];
+                            grad_w[0][k][offset+l] +=grad_hidden[k][0] * self.Eb[E_index][l];
+                            grad_Eb[E_index][l] +=grad_hidden[k][0] * self.w[0][k][offset+l];
                 offset+=self.embed_size
 
             time9=time.time()
             #print "calculate grad eb used",time9-time8
 
-        self.loss/=len(mini_batch)
-        accuracy=self.correct/float(mini_batch_size)
-
-        
+        loss/=len(mini_batch)
+        #accuracy=correct/float(mini_batch_size)
+        cost=Cost(grad_Eb,grad_w[0],grad_b[0],grad_w[1],loss,correct)
+        self.costs.append(cost)
 
     def add_l2_regularization(self):
         self.loss+=self.reg_parameter*np.sum(self.w[0]*self.w[0])/2.0
@@ -228,7 +244,7 @@ class MLP(object):
         self.eg2b=[np.zeros(b.shape) for b in self.b]
         self.eg2Eb=np.zeros(self.Eb.shape)
 
-        check=True
+        check=False
         if check:
             self.check_gradient(training_data)
         else:
@@ -283,7 +299,7 @@ class MLP(object):
             for j in range(len(feature)):
                 tok=feature[j]
                 index=tok*self.num_tokens+j
-                if index not in feature_ids:
+                if ((index in self.pre_map) and (index not in feature_ids)):
                     feature_ids.append(index)
         return feature_ids
 
@@ -333,18 +349,57 @@ class MLP(object):
         print "diff Eb:",diff_grad_Eb
 
     def compute_cost_function(self,batch):
+        self.costs=[]
+        self.loss=0
+        self.correct=0
         time1=time.time()
         pre_computed_ids=self.get_pre_computed_ids(batch)
         self.pre_compute(pre_computed_ids)
         time2=time.time()
         print "pre_compute:",time2-time1
         self.grad_saved*=0
+        """
+        trunks=[batch[j:j+self.trunk_size]
+                         for j in range(0,len(batch),self.trunk_size)]
+        time2_5=time.time()
+        print "---trunks length:",len(trunks),"---"
+        thread_pool=[]
+        try:
+            for trunk in trunks:
+                th=threading.Thread(target=self.backprop,args=(trunk,))
+                thread_pool.append(th)
+        except:
+            print "Error: unable to start thread"
+        for thread in thread_pool:
+            print "*thread"
+            thread.start()
+        for thread in thread_pool:
+            thread.join()
+        print "#thread 10 time:",time.time()-time2_5
+        for cost in self.costs:
+            self.merge_cost(cost)
+        print "---costs length:",len(self.costs),"---"
+        self.loss/=len(self.costs)
+        """
         self.backprop(batch)
+        for cost in self.costs:
+            self.merge_cost(cost)
+        print "---costs length:",len(self.costs),"---"
+        self.loss/=len(self.costs)
         time3=time.time()
-        print "back prop:",time3-time2
+        #print "back prop:",time3-time2
         self.add_l2_regularization()
         print "loss:",self.loss,"\naccuracy:",float(self.correct)/len(batch)
         self.back_prop_saved(pre_computed_ids)
+
+    def merge_cost(self,cost):
+        self.grad_w[0]+=cost.grad_W1
+        self.grad_w[1]+=cost.grad_W2
+        self.grad_b[0]+=cost.grad_b1
+        self.grad_Eb+=cost.grad_Eb
+        self.loss+=cost.loss
+        self.correct+=cost.correct
+
 
     def compute_numerical_gradient(self,batch):
         self.num_grad_w=[np.zeros(w.shape) for w in self.w]
