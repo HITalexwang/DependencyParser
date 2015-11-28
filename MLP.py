@@ -5,6 +5,7 @@ import os
 import time
 import threading
 import multiprocessing
+import Config
 
 class Cost:
     def __init__(self,grad_Eb,grad_W1,grad_b1,grad_W2,loss,correct):
@@ -27,15 +28,16 @@ class MLP(object):
         self.w[1]=W2
         self.Eb=Eb
 
+        self.config=Config.Config()
         self.num_tokens=size[0]/len(Eb[0])
         self.hidden_size=size[1]
         self.embed_size=len(Eb[0])
         self.num_labels=size[2]
-        self.reg_parameter=1.0e-8
-        self.batch_size=10000 #10000
-        self.alpha=0.01
-        self.ada_eps=1.0e-6
-        self.training_threads=10
+        self.reg_parameter=self.config.reg_parameter
+        self.batch_size=self.config.batch_size #10000
+        self.alpha=self.config.alpha
+        self.ada_eps=self.config.ada_eps
+        self.training_threads=self.config.training_threads
         self.trunk_size=self.batch_size/self.training_threads
 
         if not pre_computed_ids==None:
@@ -84,6 +86,8 @@ class MLP(object):
         hidden3=np.zeros([self.hidden_size,1])
         grad_hidden=np.zeros([self.hidden_size,1])
         grad_hidden3=np.zeros([self.hidden_size,1])
+
+        grad_saved=np.zeros([len(self.pre_map),self.hidden_size])
         mini_batch_size=len(mini_batch)
         for i in range(mini_batch_size):
             #score=[]
@@ -210,7 +214,8 @@ class MLP(object):
                     for k in range(self.hidden_size):
                         self.grad_saved[id][k]+=grad_hidden[k][0]
                     """
-                    self.grad_saved[id,:]+=np.transpose(grad_hidden[:,0])
+                    #self.grad_saved[id,:]+=np.transpose(grad_hidden[:,0])
+                    grad_saved[id,:]+=np.transpose(grad_hidden[:,0])
                 else:
                     """
                     for k in range(self.hidden_size):
@@ -218,7 +223,8 @@ class MLP(object):
                             grad_w[0][k][offset+l] +=grad_hidden[k][0] * self.Eb[E_index][l];
                             grad_Eb[E_index][l] +=grad_hidden[k][0] * self.w[0][k][offset+l];
                     """
-                    grad_w[0][:,offset,offset+self.embed_size]+=np.outer(grad_hidden[:,0],self.Eb[E_index,:])
+
+                    grad_w[0][:,offset:offset+self.embed_size]+=np.outer(grad_hidden[:,0],self.Eb[E_index,:])
                     grad_Eb[E_index,:]+=np.dot(np.transpose(grad_hidden[:,0]),self.w[0][:,offset,offset+self.embed_size])
                 offset+=self.embed_size
 
@@ -230,7 +236,7 @@ class MLP(object):
         cost=Cost(grad_Eb,grad_w[0],grad_b[0],grad_w[1],loss,correct)
         #self.costs.append(cost)
         #costs.put((grad_Eb,grad_w[1],grad_b[0],loss,correct,grad_w[0]))
-        costs.put(cost)
+        costs.put((cost,grad_saved))
 
     def add_l2_regularization(self):
         self.loss+=self.reg_parameter*np.sum(self.w[0]*self.w[0])/2.0
@@ -326,8 +332,8 @@ class MLP(object):
         return feature_ids
 
     def pre_compute(self,candidates):
-        print "pre_map size=",len(self.pre_map)
-        print "candidates size=",len(candidates)
+        #print "pre_map size=",len(self.pre_map)
+        #print "candidates size=",len(candidates)
 
         self.saved=np.zeros([len(self.pre_map),self.hidden_size])
         for i in range(len(candidates)):
@@ -343,7 +349,7 @@ class MLP(object):
                     self.saved[map_x][j]+=self.Eb[E_index][k]*self.w[0][j][offset+k]
             """
             self.saved[map_x,:]=np.dot(self.w[0][:,offset:offset+self.embed_size],np.transpose(self.Eb[E_index,:]))
-        print "pre_computed ",len(candidates)
+        #print "pre_computed ",len(candidates)
 
     def back_prop_saved(self,features_seen):
         for i in range(len(features_seen)):
@@ -353,7 +359,7 @@ class MLP(object):
             offset=pos*self.embed_size
 
             E_index=tok
-            self.grad_w[0][:,offset:offset+self.embed_size]=np.outer(self.grad_saved[map_x,:],self.Eb[E_index,:])
+            self.grad_w[0][:,offset:offset+self.embed_size]+=np.outer(self.grad_saved[map_x,:],self.Eb[E_index,:])
             self.grad_Eb[E_index,:]+=np.dot(self.grad_saved[map_x,:],self.w[0][:,offset:offset+self.embed_size])
             """
             for j in range(self.hidden_size):
@@ -385,13 +391,13 @@ class MLP(object):
         pre_computed_ids=self.get_pre_computed_ids(batch)
         self.pre_compute(pre_computed_ids)
         time2=time.time()
-        print "pre_compute:",time2-time1
+        print "pre computing used time:",time2-time1
         self.grad_saved*=0
         
         trunks=[batch[j:j+self.trunk_size]
                          for j in range(0,len(batch),self.trunk_size)]
         time2_5=time.time()
-        print "---trunks length:",len(trunks),"---"
+        #print "---trunks length:",len(trunks),"---"
         costs=multiprocessing.Queue(self.training_threads)
         process_pool=[]
         #lock = multiprocessing.Lock()
@@ -407,20 +413,22 @@ class MLP(object):
         for process in process_pool:
             process.join()
 
-        print "#thread 10 time:",time.time()-time2_5
+        #print "backprop used time:",time.time()-time2_5
 
         for i in range(len(trunks)):
-            self.costs.append(costs.get())
-        print "---costs length:",len(self.costs),"---"
+            (cost,grad_saved)=costs.get()
+            self.costs.append(cost)
+            self.grad_saved+=grad_saved
+        #print "---costs length:",len(self.costs),"---"
         #self.backprop(batch)
         for cost in self.costs:
             self.merge_cost(cost)
         self.loss/=len(self.costs)
 
         time3=time.time()
-        print "back prop:",time3-time2
+        print "backprop used time:",time3-time2
         self.add_l2_regularization()
-        print "loss:",self.loss,"\naccuracy:",float(self.correct)/len(batch)
+        print "###loss:",self.loss,"###\n###accuracy:",float(self.correct)/len(batch),"###"
         self.back_prop_saved(pre_computed_ids)
 
     def merge_cost(self,cost):
@@ -475,22 +483,49 @@ class MLP(object):
 
     def compute_cost(self,batch):
         v_cost=0
+        hidden=np.zeros([self.hidden_size,1])
         for i in range(len(batch)):
-            hidden=np.zeros([self.hidden_size,1])
+            hidden*=0
             (label,feature)=batch[i]
             offset=0
             for j in range(self.num_tokens):
                 tok=feature[j]
                 E_index=tok
+                """
                 for k in range(self.hidden_size):
                     for l in range(self.embed_size):
                         hidden[k]+=self.w[0][k][offset+l]*self.Eb[E_index][l]
+                """
+                hidden[:,0]+=np.dot(self.w[0][:,offset:offset+self.embed_size],np.transpose(self.Eb[E_index,:]))
                 offset+=self.embed_size
             hidden=hidden+self.b[0]
             #hidden1=np.dot(self.w[0],x)+self.b[0]
             hidden3=np.power(hidden,3)
-            a1=np.dot(self.w[1],hidden3)
-            (sum1,sum2)=self.softmax_log(a1,label)
+            score=np.dot(self.w[1],hidden3)
+
+            opt_label=-1
+            for j in range(self.num_labels):
+                if label[j]>=0:
+                    if (opt_label<0 or score[j][0]>score[opt_label][0]):
+                        opt_label=j
+
+            #(sum1,sum2)=self.softmax_log(score,label)
+            max_score=score[opt_label][0]
+            sum1=0
+            sum2=0
+            for j in range(self.num_labels):
+                if label[j]>=0:
+                    score[j][0]=np.exp(score[j][0]-max_score)
+                    if label[j]==1:
+                        sum1+=score[j][0]
+                    sum2+=score[j][0]
+            if sum1==0:
+                print "opt_label=",opt_label
+                print "max_score=",max_score
+                print "score:",score
+                raw_input("pause")
+
+            #(sum1,sum2)=self.softmax_log(a1,label)
             v_cost+=np.log(sum2)-np.log(sum1)
         v_cost/=len(batch)
         v_cost+=self.reg_parameter*np.sum(self.w[0]*self.w[0])/2.0
@@ -517,9 +552,12 @@ class MLP(object):
         offset=0
         for i in range(len(features)):
             E_index=features[i]
+            """
             for j in range(self.hidden_size):
                 for k in range(self.embed_size):
                     hidden[j]+=self.Eb[E_index][k]*self.w[0][j][offset+k]
+            """
+            hidden[:,0]+=np.dot(self.w[0][:,offset:offset+self.embed_size],np.transpose(self.Eb[E_index,:]))
             offset+=self.embed_size
 
         hidden+=self.b[0]

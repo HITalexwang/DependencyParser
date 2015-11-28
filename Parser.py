@@ -4,184 +4,14 @@ import numpy as np
 import copy
 import MLP
 import os
-
-class ArcStandard:
-	def __init__(self,ldict,language,is_labeled):
-		self.labeled=is_labeled
-		self.labels=ldict
-		self.lang=language
-		self.root_label=self.labels[-1]
-		self.make_transitions()
-		print "---ArcStandard---"
-		print "#transitions:",len(self.transitions)
-		print "#labels:",len(self.labels)
-		print "#ROOT label:",self.root_label
-
-	def make_transitions(self):
-		self.transitions=[]
-		for i in range(len(self.labels)):
-			self.transitions.append('L('+self.labels[i]+')')
-		for i in range(len(self.labels)):
-			self.transitions.append('R('+self.labels[i]+')')
-		self.transitions.append('S')
-		"""
-		print "transition types:"
-		for i in range(len(self.transitions)):
-			print selfself.transitions[i]
-		"""
-	def can_apply(self,c,t):#configuration c
-		if (t.startswith('R') or t.startswith('L')):
-			label=t[2:-1]
-			if t.startswith("L"):
-				h=c.get_stack(0)
-			else:
-				h=c.get_stack(1)
-			if h<0:
-				return False
-			if self.labeled:
-				if (h==0 and (not label==self.root_label)):
-					return False
-				if (h>0 and label==self.root_label):
-					return False
-		n_stack=c.get_stack_size()
-		n_buffer=c.get_buffer_size()
-		if t.startswith("L"):
-			#print "can apply L",n_stack
-			return n_stack>2
-		elif t.startswith("R"):
-			#print "can apply R",n_stack,n_buffer
-			return (n_stack>2 or (n_stack==2 and n_buffer==0))
-		else: #shift
-			#print "can apply S",n_buffer
-			return n_buffer>0
-
-	def apply(self,c,t):#configuration c
-		w1=c.get_stack(1)
-		w2=c.get_stack(0)
-		#left
-		if t.startswith("L"):
-			c.add_arc(w2,w1,t[2:-1])
-			c.remove_second_top_stack()
-			#c.lvalency[w2] += 1;
-		#right
-		elif t.startswith("R"):
-			c.add_arc(w1,w2,t[2:-1])
-			c.remove_top_stack()
-		else:
-			c.shift()
-
-	def get_oracle(self,c,tree):#configuration c
-		w1=c.get_stack(1)
-		w2=c.get_stack(0)
-		if (w1>0 and tree.get_head(w1)==w2):
-			return "L("+tree.get_label(w1)+")"
-		elif (w1>=0 and tree.get_head(w2)==w1 and (not c.has_other_child(w2,tree))):
-			return "R("+tree.get_label(w2)+")"
-		else:
-			return "S"
-
-	def init_configuration(self,sent):
-		c=Configuration(sent)
-		return c
-
-	def is_terminal(self,c):#configuration c
-		return (c.get_buffer_size()==0 and c.get_stack_size()==1)
-
-class DependencySent:
-	def __init__(self):
-		self.n=0
-		self.words=[]
-		self.poss=[]
-		self.clusters=[]
-
-	def add(self,word,pos,cluster):
-		self.n+=1
-		self.words.append(word)
-		self.poss.append(pos)
-		self.clusters.append(cluster)
-
-	def print_info(self):
-		print "n=",self.n
-		print self.words,',',self.poss,',',self.clusters
-
-class DependencyTree:
-	def __init__(self):
-		self.n=0
-		self.heads=[-1]
-		self.labels=['-NULL-']#used to be '-UNKNOWN-'???
-
-	def add(self,h,l):
-		self.n+=1
-		self.heads.append(h)
-		self.labels.append(l)
-
-	def set(self,k,h,l):
-		self.heads[k]=h
-		self.labels[k]=l
-
-	def get_head(self,k):
-		if (k<=0 or k>self.n):
-			return -1
-		else:
-			return self.heads[k]
-
-	def get_label(self,k):
-		if(k<=0 or k>self.n):
-			return '-NULL-'
-		else:
-			return self.labels[k]
-
-	def get_root(self):
-		for k in range(1,self.n+1):
-			if self.get_head(k)==0:
-				return k
-		return 0 #non tree
-
-	def is_single_root(self):
-		roots=0
-		for k in range(1,self.n+1):
-			if self.get_head(k)==0:
-				roots+=1
-		return (roots==1)
-
-	def is_tree(self):
-		h=[-1] 
-		for k in range(1,self.n+1):
-			if (self.get_head(k)<0 or self.get_head(k)>self.n):
-				return False
-			h.append(-1)
-		for k in range(1,self.n+1):
-			i=k
-			while (i>0):
-				if (h[i]>=0 and h[i]<k):
-					break
-				if(h[i]==k):
-					return False
-				h[i]=k #h[i]=k  means the original child is k,so if h[i]==k means it returns to the origin,which makes a circle
-				i=self.get_head(i)
-		return True
-
-	def is_projective(self):
-		if (not self.is_tree()):
-			return False
-		self.counter=-1
-		return self.visit_tree(0)
-
-	def visit_tree(self,w): #??? dont understand
-		for k in range(1,w):
-			if (self.get_head(k)==w and self.visit_tree(k)==False):
-				return False
-		self.counter+=1
-		if (w!=self.counter):
-			return False
-		for k in range(w+1,self.n+1):
-			if (self.get_head(k)==w and self.visit_tree(k)==False):
-				return False
-		return True
-
-	def print_tree(self):
-		for i in range(0,self.n+1):
-			print i,self.get_head(i),',',self.get_label(i)
+import ArcStandard,DependencySent,DependencyTree,Dataset,Configuration
+import Config
+"""
+import DependencySent
+import DependencyTree
+import Dataset
+import Configuration
+"""
 
 class Parser:
 	def __init__(self):
@@ -189,19 +19,45 @@ class Parser:
 		self.label_ids={}
 		self.pos_ids={}
 		self.pre_computed_ids={}
-		self.delexicalized=False
-		self.use_postag=True
-		self.labeled=True
-		self.num_tokens=48
-		self.embedding_size=50
-		self.num_pre_computed=100000
-		self.hidden_size=50
-		self.pos_emb_size=10
-		self.label_emb_size=10
+		self.config=Config.Config()
+		self.delexicalized=self.config.delexicalized
+		self.use_postag=self.config.use_postag
+		self.labeled=self.config.labeled
+		self.num_tokens=self.config.num_tokens
+		self.embedding_size=self.config.embedding_size
+		self.num_pre_computed=self.config.num_pre_computed
+		self.hidden_size=self.config.hidden_size
+		self.pos_emb_size=self.config.pos_emb_size
+		self.label_emb_size=self.config.label_emb_size
+
+	def train(self,):
+		sents=[]
+		trees=[]
+		self.load_file(self.config.training_file_name,sents,trees,True)#en-universal-dev-brown.conll#en-universal-train-brown.conll
+		self.print_tree_states(trees)
+
+		(embed_ids,embeddings)=self.read_embed_file(self.config.embedding_file_name)#word_embeddings.txt
+		(known_words,known_poss,known_labels)=self.gen_dictionaries(sents,trees,True)
+		ldict=known_labels
+		#print ldict
+		#ldict.remove('-NULL-')  #use -NULL- to denote the ROOT node's arc label
+		self.system=ArcStandard.ArcStandard(ldict,'CN',True)
+		self.setup_classifier_for_trainning(sents,trees,True)
+
+		self.classifier.train(3)
+		self.save_model(self.config.save_model_name)
+
+		self.test(self.config.test_file_name)#en-universal-dev-brown.conll
+		#test_tree=self.predict(sents[0])
+		#test_tree.print_tree()
+		#self.load_model('model')
+		#c=Configuration(sents[0])
+		#features=self.get_features(c)
+		#scores=self.classifier.compute_scores(features)
 
 	def load_file(self,file,sents,trees,labeled):
-		sent=DependencySent()
-		tree=DependencyTree()
+		sent=DependencySent.DependencySent()
+		tree=DependencyTree.DependencyTree()
 		data=open(file)
 		for line in data:
 			sep_line=line.strip().split()
@@ -209,8 +65,8 @@ class Parser:
 			if len(sep_line)<10:
 				sents.append(sent)
 				trees.append(tree)
-				sent=DependencySent()
-				tree=DependencyTree()
+				sent=DependencySent.DependencySent()
+				tree=DependencyTree.DependencyTree()
 			else:
 				word=sep_line[1]
 				pos=sep_line[3]
@@ -225,6 +81,7 @@ class Parser:
 		data.close()
 
 	def print_tree_states(self,trees):
+		print "---tree states---"
 		print "there are ",len(trees),"trees"
 		non_trees=0
 		non_proj=0
@@ -233,7 +90,6 @@ class Parser:
 				non_trees+=1
 			elif not trees[i].is_projective():
 				non_proj+=1
-		print "---tree states---"
 		print non_trees,"trees are illegal"
 		print non_proj,"trees are not projective"
 
@@ -362,7 +218,7 @@ class Parser:
 		print "---Setup Classifier---"
 		print "found embeddings:",in_embed,"/",len(self.known_words)
 		dataset=self.gen_train_samples(sents,trees)
-		print "create classifier"
+		print "creating classifier (",self.embedding_size*self.num_tokens,",",self.hidden_size,",",n_actions,")"
 		#classifier=NNClassifier(dataset,Eb,W1,b1,W2,self.pre_computed_ids)
 		(features,labels)=self.preprocess_dataset(dataset)
 		self.classifier=MLP.MLP([self.embedding_size*self.num_tokens,self.hidden_size,n_actions],Eb,W1,b1,W2,self.pre_computed_ids,features,labels)
@@ -378,15 +234,15 @@ class Parser:
 	def gen_train_samples(self,sents,trees):
 		num_tokens=48
 		num_trans=len(self.system.transitions)
-		ds_train=Dataset(num_tokens,num_trans)
-		print "generating training examples"
+		ds_train=Dataset.Dataset(num_tokens,num_trans)
+		print "---generating training examples---"
 		tokpos_count={}
 		for i in range(len(sents)):
 			if i%1000==0:
-				print "iter",i
+				print "have processed",i,"sents"
 		#only use projective tree
 			if trees[i].is_projective():
-				c=Configuration(sents[i])
+				c=Configuration.Configuration(sents[i])
 				while(not self.system.is_terminal(c)):
 					oracle=self.system.get_oracle(c,trees[i])
 					features=self.get_features(c)
@@ -408,12 +264,12 @@ class Parser:
 						else:
 							tokpos_count[feature_id]+=1
 					self.system.apply(c,oracle)
-		print "#train examples num:",ds_train.n
+		print "##train examples num:",ds_train.n,"##"
 		temp=copy.deepcopy(tokpos_count)
-		print "sort tokpos_count"
+		#print "sort tokpos_count"
 		temp=sorted(temp.iteritems(),key=lambda d:d[1],reverse=True)
 		self.pre_computed_ids=[]
-		print "fill pre_computed_ids"
+		#print "fill pre_computed_ids"
 		real_size=min(len(temp),self.num_pre_computed)
 		cnt=0
 		for t in temp:
@@ -610,33 +466,6 @@ class Parser:
 
 		self.classifier=MLP.MLP([self.embedding_size*self.num_tokens,self.hidden_size,2*n_label+1],self.Eb,self.W1,self.b1,self.W2)
 
-
-	def train(self,):
-		sents=[]
-		trees=[]
-		self.load_file('en-universal-dev-brown.conll',sents,trees,True)#en-universal-dev-brown.conll
-		self.print_tree_states(trees)
-
-		(embed_ids,embeddings)=self.read_embed_file('embeds')#word_embeddings.txt
-		(known_words,known_poss,known_labels)=self.gen_dictionaries(sents,trees,True)
-		ldict=known_labels
-		print ldict
-		#ldict.remove('-NULL-')  #use -NULL- to denote the ROOT node's arc label
-		self.system=ArcStandard(ldict,'CN',True)
-		self.setup_classifier_for_trainning(sents,trees,True)
-
-		self.classifier.train(3)
-		self.save_model('model')
-
-		self.test('test1')
-		#test_tree=self.predict(sents[0])
-		#test_tree.print_tree()
-		#self.load_model('model')
-		#c=Configuration(sents[0])
-		#features=self.get_features(c)
-		#scores=self.classifier.compute_scores(features)
-		
-
 	def test(self,test_filename):
 		print "---loading test file from:",test_filename,"---"
 		test_sents=[]
@@ -649,7 +478,7 @@ class Parser:
 		self.print_tree_states(test_trees)
 		n_sents=len(test_sents)
 		predicted=[]
-		self.system=ArcStandard(self.known_labels,'CN',True)
+		self.system=ArcStandard.ArcStandard(self.known_labels,'CN',True)
 		for test_sent in test_sents:
 			predicted.append(self.predict(test_sent))
 		result=self.evaluate(test_sents,predicted,test_trees)
@@ -657,7 +486,7 @@ class Parser:
 
 	def predict(self,sent):
 		num_trans=len(self.system.transitions)
-		c=Configuration(sent)
+		c=Configuration.Configuration(sent)
 		while(not self.system.is_terminal(c)):
 			opt_score=-10000
 			opt_trans=''
@@ -696,194 +525,8 @@ class Parser:
 		result['LAS']=las_cnt/float(sample_sum)
 		return result
 
-class Sample:
-	def __init__(self,feature,label):
-		self.feature=feature
-		self.label=label
-
-	def get_feature(self):
-		return self.feature
-
-	def get_label(self):
-		return self.label
-
-class Dataset:
-	def __init__(self,num_features,num_labels):
-		self.n=0
-		self.num_features=num_features
-		self.num_labels=num_labels
-		self.samples=[]
-
-	def add_sample(self,feature,label):
-		sample=Sample(feature,label)
-		self.n+=1
-		self.samples.append(sample)
-
-	def print_info(self):
-		print self.n
-		for i in range(self.n):
-			print self.samples[i].get_feature()," ",self.samples[i].get_label()
-
-	def shuffle(self):
-		np.random.shuffle(self.samples)
-
-class Configuration:
-	def __init__(self,sent):
-		self.stack=[]
-		self.buffer=[]
-		self.sent=sent
-		self.tree=DependencyTree()
-		for i in range(1,self.sent.n+1):
-			self.tree.add(-1,'-UNKNOWN-')
-			self.buffer.append(i)
-		self.stack.append(0)
-
-	def shift(self):
-		k=self.get_buffer(0)
-		if k==-1:
-			return False
-		self.buffer.pop(0)
-		self.stack.append(k)
-		return True
-
-	def remove_top_stack(self):
-		n_stack=self.get_stack_size()
-		if n_stack<1:
-			return False
-		self.stack.pop()
-		return True
-
-	def remove_second_top_stack(self):
-		n_stack=self.get_stack_size()
-		if n_stack<2:
-			return False
-		self.stack.pop(-2)
-		return True
-
-	def get_stack_size(self):
-		return len(self.stack)
-
-	def get_buffer_size(self):
-		return len(self.buffer)
-
-	def get_sent_size(self):
-		return len(self.sent.n)
-
-	def get_head(self,k):
-		return self.tree.get_head(k)
-
-	def get_label(self,k):
-		return self.tree.get_label(k)
-
-	#k starts from 0,top stack
-	def get_stack(self,k):
-		n_stack=self.get_stack_size()
-		if (k>=0 and k<n_stack):
-			return self.stack[-1-k]
-		else:
-			return -1
-
-	def get_buffer(self,k):
-		n_buffer=self.get_buffer_size()
-		if (k>=0 and k<n_buffer):
-			return self.buffer[k]
-		else:
-			return -1
-
-	def get_word(self,k):
-		if (k==0):
-			return '-ROOT-'
-		else:
-			k=k-1
-		if (k<0 or k>=self.sent.n):
-			return 'NULL'
-		else:
-			return self.sent.words[k]
-
-	def get_pos(self,k):
-		if (k==0):
-			return '-ROOT-'
-		else:
-			k=k-1
-		if (k<0 or k>=self.sent.n):
-			return 'NULL'
-		else:
-			return self.sent.poss[k]
-
-	#m's parent is h, label is l,the arc is from h to m
-	def add_arc(self,h,m,l):
-		self.tree.set(m,h,l)
-
-	def get_left_child(self,k,cnt):
-		if (k<0 or k>self.tree.n):
-			return -1
-		c=0
-		for i in range(1,k):
-			if self.tree.get_head(i)==k:
-				c+=1
-				if c==cnt:
-					return i
-		return -1
-
-	#def get_left_child(self,k):
-		#return self.get_left_child(k,1)
-
-	def get_right_child(self,k,cnt):
-		if (k<0 or k>self.tree.n):
-			return -1
-		c=0
-		for i in range(self.tree.n,k,-1):
-			if self.tree.get_head(i)==k:
-				c+=1
-				if c==cnt:
-					return i
-		return -1
-
-	#def get_right_child(self,k):
-		#return self.get_right_child(k,1)
-
-	def has_other_child(self,k,gold_tree):
-		for i in range(1,self.tree.n+1):
-			if (gold_tree.get_head(i)==k and self.tree.get_head(i)!=k):
-				return True
-		return False
-
-	def get_tree(self):
-		return self.tree
-
-	def info(self):
-		s="[S]"
-		for i in range(self.get_stack_size()):
-			if i>0:
-				s+=","
-			s+=str(self.stack[i])
-
-		s+="\n[B]"
-		for i in range(self.get_buffer_size()):
-			if i>0:
-				s+=","
-			s+=str(self.buffer[i])
-
-		s+="\n[H]"
-		for i in range(1,self.tree.n+1):
-			if i>1:
-				s+=","
-			s+=str(self.get_head(i))+"("+str(self.get_label(i))+")"
-		return s
-
-	
-
 if __name__=="__main__":
 	#arc=ArcStandard()
 	parser=Parser()
 	parser.train()
-	"""
-	print known_words
-	print known_poss
-	print known_labels
-	sents[0].print_info()
-	trees[0].print_tree()
-	print trees[0].is_single_root()
-	print trees[0].is_projective()
-	"""
 
