@@ -225,7 +225,7 @@ class MLP(object):
                     """
 
                     grad_w[0][:,offset:offset+self.embed_size]+=np.outer(grad_hidden[:,0],self.Eb[E_index,:])
-                    grad_Eb[E_index,:]+=np.dot(np.transpose(grad_hidden[:,0]),self.w[0][:,offset,offset+self.embed_size])
+                    grad_Eb[E_index,:]+=np.dot(np.transpose(grad_hidden[:,0]),self.w[0][:,offset:offset+self.embed_size])
                 offset+=self.embed_size
 
             time9=time.time()
@@ -272,8 +272,8 @@ class MLP(object):
         self.eg2b=[np.zeros(b.shape) for b in self.b]
         self.eg2Eb=np.zeros(self.Eb.shape)
 
-        check=False
-        if check:
+        #check=False
+        if self.config.check:
             self.check_gradient(training_data)
         else:
             for i in range(iter):
@@ -318,18 +318,47 @@ class MLP(object):
                 offset+=self.embed_size
             training_data.append((x,label,feature))
         #print "batch len:",len(training_data)
+        training_data=dict.fromkeys(training_data)
         return training_data
 
     def get_pre_computed_ids(self,batch):
-        feature_ids=[]
+        feature_ids={}
         for i in range(len(batch)):
             (label,feature)=batch[i]
             for j in range(len(feature)):
                 tok=feature[j]
                 index=tok*self.num_tokens+j
                 if ((index in self.pre_map) and (index not in feature_ids)):
-                    feature_ids.append(index)
-        return feature_ids
+                    #feature_ids.append(index)
+                    feature_ids[index]=None
+        feature_ids_list=[]
+        for i in feature_ids:
+            feature_ids_list.append(i)
+        return feature_ids_list
+
+    def pre_compute_t(self,candidates):
+        trunks=[candidates[j:j+len(candidates)/self.config.pre_threads]
+                         for j in range(0,len(candidates),len(candidates)/self.config.pre_threads)]
+        #time2_5=time.time()
+        #print "---trunks length:",len(trunks),"---"
+        saves=multiprocessing.Queue(self.config.pre_threads)
+        process_pool=[]
+        #lock = multiprocessing.Lock()
+        mgr=multiprocessing.Manager()
+        saves=mgr.Queue()
+        try:
+            for trunk in trunks:
+                pr=multiprocessing.Process(target=self.pre_compute,args=(trunk,saves))
+                pr.start()
+                process_pool.append(pr)
+        except:
+            print "Error: unable to start thread"
+        for process in process_pool:
+            process.join()
+
+        self.saved=np.zeros([len(self.pre_map),self.hidden_size])
+        for i in range(len(trunks)):
+            self.saved+=saves.get()
 
     def pre_compute(self,candidates):
         #print "pre_map size=",len(self.pre_map)
@@ -349,7 +378,9 @@ class MLP(object):
                     self.saved[map_x][j]+=self.Eb[E_index][k]*self.w[0][j][offset+k]
             """
             self.saved[map_x,:]=np.dot(self.w[0][:,offset:offset+self.embed_size],np.transpose(self.Eb[E_index,:]))
-        #print "pre_computed ",len(candidates)
+        #self.saves.put(saved)
+        print "pre_computed ",len(candidates)
+        
 
     def back_prop_saved(self,features_seen):
         for i in range(len(features_seen)):
@@ -396,7 +427,7 @@ class MLP(object):
         
         trunks=[batch[j:j+self.trunk_size]
                          for j in range(0,len(batch),self.trunk_size)]
-        time2_5=time.time()
+        #time2_5=time.time()
         #print "---trunks length:",len(trunks),"---"
         costs=multiprocessing.Queue(self.training_threads)
         process_pool=[]
@@ -417,13 +448,16 @@ class MLP(object):
 
         for i in range(len(trunks)):
             (cost,grad_saved)=costs.get()
-            self.costs.append(cost)
+            #self.costs.append(cost)
+            self.merge_cost(cost)
             self.grad_saved+=grad_saved
         #print "---costs length:",len(self.costs),"---"
         #self.backprop(batch)
+        """
         for cost in self.costs:
             self.merge_cost(cost)
-        self.loss/=len(self.costs)
+        """
+        self.loss/=len(trunks)
 
         time3=time.time()
         print "backprop used time:",time3-time2

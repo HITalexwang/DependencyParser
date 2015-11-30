@@ -44,10 +44,8 @@ class Parser:
 		self.system=ArcStandard.ArcStandard(ldict,'CN',True)
 		self.setup_classifier_for_trainning(sents,trees,True)
 
-		self.classifier.train(3)
-		self.save_model(self.config.save_model_name)
-
-		self.test(self.config.test_file_name)#en-universal-dev-brown.conll
+		self.classifier.train(10)
+		
 		#test_tree=self.predict(sents[0])
 		#test_tree.print_tree()
 		#self.load_model('model')
@@ -430,6 +428,7 @@ class Parser:
 			self.known_labels.append(sep[i])
 		#print len(self.known_words),len(self.known_poss),len(self.known_labels)
 		#load Eb
+		self.generate_ids()
 		Eb_size=n_dict+n_pos+n_label
 		self.Eb=np.zeros([Eb_size,self.embedding_size])
 		for i in range(Eb_size):
@@ -528,5 +527,10 @@ class Parser:
 if __name__=="__main__":
 	#arc=ArcStandard()
 	parser=Parser()
-	parser.train()
-
+	if not parser.config.is_test:
+		parser.train()
+		self.save_model(parser.config.save_model_name)
+		self.test(parser.config.test_file_name)#en-universal-dev-brown.conll
+	else:
+		parser.load_model(parser.config.load_file_name)
+		parser.test(parser.config.test_file_name)
