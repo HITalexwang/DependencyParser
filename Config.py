@@ -3,6 +3,8 @@ class Config:
 		self.check=False
 		self.is_test=False
 		
+		self.iter=10
+
 		self.delexicalized=False
 		self.use_postag=True
 		self.labeled=True
@@ -17,7 +19,7 @@ class Config:
         	self.batch_size=10000
         	self.alpha=0.01
         	self.ada_eps=1.0e-6
-        	self.training_threads=8
+        	self.training_threads=6
         	self.pre_threads=1
 
         	self.training_file_name='data/en-universal-dev-brown.conll'#en-universal-dev-brown.conll

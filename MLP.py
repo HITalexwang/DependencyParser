@@ -20,8 +20,9 @@ class MLP(object):
     def __init__(self,size,Eb,W1,b1,W2,pre_computed_ids=None,features=None,labels=None):#size:[50*48,200,|transitions|]
         self.layer_num=len(size)
         self.size=size
-        self.b=[np.random.randn(size[1],1) ]
+        self.b=[np.random.randn(size[1],1)]
         self.w=[np.random.randn(y,x) for x,y in zip(size[:-1],size[1:])]
+        #print type(self.b[0][0][0])
         for i in range(len(b1)):
             self.b[0][i]=b1[i]
         self.w[0]=W1
@@ -76,6 +77,9 @@ class MLP(object):
 
     def backprop(self,mini_batch,costs):
         #print self.grad_w[1].shape
+        forward_time=0
+        bp_time=0
+
         loss=0.0
         correct=0
         grad_w=[np.zeros(w.shape) for w in self.w]
@@ -86,6 +90,7 @@ class MLP(object):
         hidden3=np.zeros([self.hidden_size,1])
         grad_hidden=np.zeros([self.hidden_size,1])
         grad_hidden3=np.zeros([self.hidden_size,1])
+
 
         grad_saved=np.zeros([len(self.pre_map),self.hidden_size])
         mini_batch_size=len(mini_batch)
@@ -101,16 +106,15 @@ class MLP(object):
             time1=time.time()
 
             for j in xrange(self.num_tokens):
-                tok=feature[j]
-                E_index=tok
-                index=tok*self.num_tokens+j
+                E_index=feature[j]
+                index=E_index*self.num_tokens+j
                 if index in self.pre_map:
-                    id=self.pre_map[index]
+                    #id=self.pre_map[index]
                     """
                     for k in range(self.hidden_size):
                         hidden[k][0]+=self.saved[id][k]
                     """
-                    hidden[:,0]+=np.transpose(self.saved[id][:])
+                    hidden[:,0]+=np.transpose(self.saved[self.pre_map[index]][:])
                 else:
                     """
                     for k in range(self.hidden_size):
@@ -119,32 +123,18 @@ class MLP(object):
                     """
                     hidden[:,0]+=np.dot(self.w[0][:,offset:offset+self.embed_size],np.transpose(self.Eb[E_index,:]))
                 offset+=self.embed_size
-
-            time2=time.time()
-           # print "claculate Eb*w1 used",time2-time1
-
             hidden=hidden+self.b[0]
-
-            time3=time.time()
-            #print "calculate +b1 used",time3-time2
-
             hidden3=np.power(hidden,3)
 
-            time4=time.time()
-            #print "calculate power 3 used",time4-time3
-
             #softmax
-            opt_label=-1
-            #print hidden3.shape
             score=np.dot(self.w[1],hidden3)
-            #print score.shape
-            time5=time.time()
-            #print "calculate score used",time5-time4
-            #if i==0:
-                #print self.w[1][0]
+
+            #score=self.forward_function(hidden,self.b[0],self.w[1])
+
+            opt_label=-1
             for j in xrange(self.num_labels):
                 if label[j]>=0:
-                    if (opt_label<0 or score[j][0]>score[opt_label][0]):
+                    if (score[j][0]>score[opt_label][0] or opt_label<0):
                         opt_label=j
 
             #(sum1,sum2)=self.softmax_log(score,label)
@@ -165,10 +155,15 @@ class MLP(object):
             time6=time.time()
             #print "calculate softmax_log used",time6-time5
 
+            forward_time+=time6-time1
             loss+=(np.log(sum2)-np.log(sum1))
             if label[opt_label]==1:
                 correct+=1
+
+
             #compute gradient
+            time7=time.time()
+
             grad_hidden3*=0
             for i in xrange(self.num_labels):
                 if label[i]>=0:#important???why
@@ -184,8 +179,6 @@ class MLP(object):
                     grad_w[1][i,:]+=delta*hidden3[:,0]
                     grad_hidden3[:,0]+=delta*self.w[1][i,:]
 
-
-            time7=time.time()
             #print "calculate delta used",time7-time6
 
             grad_hidden*=0
@@ -199,23 +192,20 @@ class MLP(object):
             """
             grad_hidden=grad_hidden3*3*hidden*hidden
             grad_b[0]+=grad_hidden
-            time8=time.time()
-            #print "calculate grad hidden used",time8-time7
 
             offset=0
             for j in xrange(self.num_tokens):
-                tok=feature[j]
-                E_index=tok
-                index=tok*self.num_tokens+j
+                E_index=feature[j]
+                index=E_index*self.num_tokens+j
 
                 if index in self.pre_map:
-                    id=self.pre_map[index]
+                    #id=self.pre_map[index]
                     """
                     for k in range(self.hidden_size):
                         self.grad_saved[id][k]+=grad_hidden[k][0]
                     """
                     #self.grad_saved[id,:]+=np.transpose(grad_hidden[:,0])
-                    grad_saved[id,:]+=np.transpose(grad_hidden[:,0])
+                    grad_saved[self.pre_map[index],:]+=np.transpose(grad_hidden[:,0])
                 else:
                     """
                     for k in range(self.hidden_size):
@@ -229,8 +219,11 @@ class MLP(object):
                 offset+=self.embed_size
 
             time9=time.time()
+            bp_time+=time9-time7
             #print "calculate grad eb used",time9-time8
 
+        #print "forward_time:",forward_time
+        #print "bp_time:",bp_time
         loss/=len(mini_batch)
         #accuracy=correct/float(mini_batch_size)
         cost=Cost(grad_Eb,grad_w[0],grad_b[0],grad_w[1],loss,correct)
@@ -271,6 +264,15 @@ class MLP(object):
         self.eg2w=[np.zeros(w.shape) for w in self.w]
         self.eg2b=[np.zeros(b.shape) for b in self.b]
         self.eg2Eb=np.zeros(self.Eb.shape)
+
+        """
+        hid=T.matrix("hid")
+        b=T.matrix("b")
+        w1=T.matrix("w1")
+        hid3=T.power(hid+b,3)
+        sco=T.dot(w1,hid3)
+        self.forward_function=theano.function([hid,b,w1],sco)
+        """
 
         #check=False
         if self.config.check:
@@ -331,10 +333,10 @@ class MLP(object):
                 if ((index in self.pre_map) and (index not in feature_ids)):
                     #feature_ids.append(index)
                     feature_ids[index]=None
-        feature_ids_list=[]
+        """feature_ids_list=[]
         for i in feature_ids:
-            feature_ids_list.append(i)
-        return feature_ids_list
+            feature_ids_list.append(i)"""
+        return feature_ids
 
     def pre_compute_t(self,candidates):
         trunks=[candidates[j:j+len(candidates)/self.config.pre_threads]
@@ -365,10 +367,10 @@ class MLP(object):
         #print "candidates size=",len(candidates)
 
         self.saved=np.zeros([len(self.pre_map),self.hidden_size])
-        for i in xrange(len(candidates)):
-            map_x=self.pre_map[candidates[i]]
-            tok=candidates[i]/self.num_tokens
-            pos=candidates[i]%self.num_tokens
+        for i in candidates:
+            map_x=self.pre_map[i]
+            tok=i/self.num_tokens
+            pos=i%self.num_tokens
             offset=pos*self.embed_size
 
             E_index=tok
@@ -383,10 +385,10 @@ class MLP(object):
         
 
     def back_prop_saved(self,features_seen):
-        for i in xrange(len(features_seen)):
-            map_x=self.pre_map[features_seen[i]]
-            tok=features_seen[i]/self.num_tokens
-            pos=features_seen[i]%self.num_tokens
+        for i in features_seen:
+            map_x=self.pre_map[i]
+            tok=i/self.num_tokens
+            pos=i%self.num_tokens
             offset=pos*self.embed_size
 
             E_index=tok
@@ -464,6 +466,7 @@ class MLP(object):
         self.add_l2_regularization()
         print "###loss:",self.loss,"###\n###accuracy:",float(self.correct)/len(batch),"###"
         self.back_prop_saved(pre_computed_ids)
+        print "save backprop used time:",time.time()-time3
 
     def merge_cost(self,cost):
         self.grad_w[0]+=cost.grad_W1

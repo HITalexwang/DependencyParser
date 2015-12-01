@@ -44,7 +44,7 @@ class Parser:
 		self.system=ArcStandard.ArcStandard(ldict,'CN',True)
 		self.setup_classifier_for_trainning(sents,trees,True)
 
-		self.classifier.train(10)
+		self.classifier.train(self.config.iter)
 		
 		#test_tree=self.predict(sents[0])
 		#test_tree.print_tree()
@@ -529,8 +529,8 @@ if __name__=="__main__":
 	parser=Parser()
 	if not parser.config.is_test:
 		parser.train()
-		self.save_model(parser.config.save_model_name)
-		self.test(parser.config.test_file_name)#en-universal-dev-brown.conll
+		#parser.save_model(parser.config.save_model_name)
+		#parser.test(parser.config.test_file_name)#en-universal-dev-brown.conll
 	else:
 		parser.load_model(parser.config.load_file_name)
 		parser.test(parser.config.test_file_name)
