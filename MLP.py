@@ -43,7 +43,7 @@ class MLP(object):
         if not pre_computed_ids==None:
             self.pre_computed_ids=pre_computed_ids
             self.pre_map={}
-            for i in range(len(pre_computed_ids)):
+            for i in xrange(len(pre_computed_ids)):
                 self.pre_map[pre_computed_ids[i]]=i
             self.grad_saved=np.zeros([len(self.pre_map),self.hidden_size])
         if not features==None:
@@ -89,7 +89,7 @@ class MLP(object):
 
         grad_saved=np.zeros([len(self.pre_map),self.hidden_size])
         mini_batch_size=len(mini_batch)
-        for i in range(mini_batch_size):
+        for i in xrange(mini_batch_size):
             #score=[]
             hidden*=0
             hidden3*=0
@@ -100,7 +100,7 @@ class MLP(object):
 
             time1=time.time()
 
-            for j in range(self.num_tokens):
+            for j in xrange(self.num_tokens):
                 tok=feature[j]
                 E_index=tok
                 index=tok*self.num_tokens+j
@@ -142,7 +142,7 @@ class MLP(object):
             #print "calculate score used",time5-time4
             #if i==0:
                 #print self.w[1][0]
-            for j in range(self.num_labels):
+            for j in xrange(self.num_labels):
                 if label[j]>=0:
                     if (opt_label<0 or score[j][0]>score[opt_label][0]):
                         opt_label=j
@@ -151,7 +151,7 @@ class MLP(object):
             max_score=score[opt_label][0]
             sum1=0
             sum2=0
-            for j in range(self.num_labels):
+            for j in xrange(self.num_labels):
                 if label[j]>=0:
                     score[j][0]=np.exp(score[j][0]-max_score)
                     if label[j]==1:
@@ -170,7 +170,7 @@ class MLP(object):
                 correct+=1
             #compute gradient
             grad_hidden3*=0
-            for i in range(self.num_labels):
+            for i in xrange(self.num_labels):
                 if label[i]>=0:#important???why
                     delta=-(label[i]-score[i][0]/sum2)/mini_batch_size
                     #print self.grad_w[1].shape
@@ -203,7 +203,7 @@ class MLP(object):
             #print "calculate grad hidden used",time8-time7
 
             offset=0
-            for j in range(self.num_tokens):
+            for j in xrange(self.num_tokens):
                 tok=feature[j]
                 E_index=tok
                 index=tok*self.num_tokens+j
@@ -276,7 +276,7 @@ class MLP(object):
         if self.config.check:
             self.check_gradient(training_data)
         else:
-            for i in range(iter):
+            for i in xrange(iter):
                 print "iter ",i
                 random.shuffle(training_data)
                 batchs=[training_data[j:j+self.batch_size]
@@ -302,18 +302,18 @@ class MLP(object):
 
     def pre_process(self):
         training_data=[]
-        for i in range(len(self.features)):
+        for i in xrange(len(self.features)):
             training_data.append((self.labels[i],self.features[i]))
         return training_data
 
     def pre_process_batch(self,batch):
         training_data=[]
-        for i in range(len(batch)):
+        for i in xrange(len(batch)):
             (label,feature)=batch[i]
             offset=0
             x=np.zeros([self.size[0],1])
-            for j in range(len(feature)):
-                for k in range(offset,offset+self.embed_size):
+            for j in xrange(len(feature)):
+                for k in xrange(offset,offset+self.embed_size):
                     x[k]=self.Eb[feature[j]][k-offset]
                 offset+=self.embed_size
             training_data.append((x,label,feature))
@@ -365,7 +365,7 @@ class MLP(object):
         #print "candidates size=",len(candidates)
 
         self.saved=np.zeros([len(self.pre_map),self.hidden_size])
-        for i in range(len(candidates)):
+        for i in xrange(len(candidates)):
             map_x=self.pre_map[candidates[i]]
             tok=candidates[i]/self.num_tokens
             pos=candidates[i]%self.num_tokens
@@ -383,7 +383,7 @@ class MLP(object):
         
 
     def back_prop_saved(self,features_seen):
-        for i in range(len(features_seen)):
+        for i in xrange(len(features_seen)):
             map_x=self.pre_map[features_seen[i]]
             tok=features_seen[i]/self.num_tokens
             pos=features_seen[i]%self.num_tokens
@@ -426,7 +426,7 @@ class MLP(object):
         self.grad_saved*=0
         
         trunks=[batch[j:j+self.trunk_size]
-                         for j in range(0,len(batch),self.trunk_size)]
+                         for j in xrange(0,len(batch),self.trunk_size)]
         #time2_5=time.time()
         #print "---trunks length:",len(trunks),"---"
         costs=multiprocessing.Queue(self.training_threads)
@@ -446,7 +446,7 @@ class MLP(object):
 
         #print "backprop used time:",time.time()-time2_5
 
-        for i in range(len(trunks)):
+        for i in xrange(len(trunks)):
             (cost,grad_saved)=costs.get()
             #self.costs.append(cost)
             self.merge_cost(cost)
@@ -480,8 +480,8 @@ class MLP(object):
         self.num_grad_Eb=np.zeros(self.Eb.shape)
         epsilon=1e-6
         print "checking w1"
-        for i in range(len(self.w[0])):
-            for j in range(len(self.w[0][0])):
+        for i in xrange(len(self.w[0])):
+            for j in xrange(len(self.w[0][0])):
                 self.w[0][i][j]+=epsilon
                 p_eps_cost=self.compute_cost(batch)
                 self.w[0][i][j]-=2*epsilon
@@ -489,7 +489,7 @@ class MLP(object):
                 self.num_grad_w[0][i][j]= (p_eps_cost - n_eps_cost) / (2 * epsilon)
                 self.w[0][i][j]+=epsilon
         print "checking b1"
-        for i in range(len(self.b[0])):
+        for i in xrange(len(self.b[0])):
             self.b[0][i]+=epsilon
             p_eps_cost=self.compute_cost(batch)
             self.b[0][i]-=2*epsilon
@@ -497,8 +497,8 @@ class MLP(object):
             self.num_grad_b[0][i]= (p_eps_cost - n_eps_cost) / (2 * epsilon)
             self.b[0][i]+=epsilon
         print "checking w2"
-        for i in range(len(self.w[1])):
-            for j in range(len(self.w[1][0])):
+        for i in xrange(len(self.w[1])):
+            for j in xrange(len(self.w[1][0])):
                 self.w[1][i][j]+=epsilon
                 p_eps_cost=self.compute_cost(batch)
                 self.w[1][i][j]-=2*epsilon
@@ -506,8 +506,8 @@ class MLP(object):
                 self.num_grad_w[1][i][j]= (p_eps_cost - n_eps_cost) / (2 * epsilon)
                 self.w[1][i][j]+=epsilon
         print "checking Eb"
-        for i in range(len(self.Eb)):
-            for j in range(len(self.Eb[0])):
+        for i in xrange(len(self.Eb)):
+            for j in xrange(len(self.Eb[0])):
                 self.Eb[i][j]+=epsilon
                 p_eps_cost=self.compute_cost(batch)
                 self.Eb[i][j]-=2*epsilon
