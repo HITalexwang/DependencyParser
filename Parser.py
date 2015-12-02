@@ -44,8 +44,18 @@ class Parser:
 		self.system=ArcStandard.ArcStandard(ldict,'CN',True)
 		self.setup_classifier_for_trainning(sents,trees,True)
 
-		self.classifier.train(self.config.iter)
-		
+		#self.classifier.train(self.config.iter)
+		opt_result_score=0
+		opt_iter=0
+		for i in range(self.config.out_iter):
+			print "\n-----outer iter:",i,"-----"
+			self.classifier.train(self.config.checkiter)
+			result=self.test(self.config.test_file_name)
+			tmp_score=result['UAS']*result['LAS']/(result['UAS']+result['LAS'])
+			if tmp_score>opt_result_score:
+				opt_result_score=tmp_score
+				opt_iter=i
+				self.save_model(self.config.save_model_name+str(i))
 		#test_tree=self.predict(sents[0])
 		#test_tree.print_tree()
 		#self.load_model('model')
@@ -359,6 +369,7 @@ class Parser:
 		return self.label_ids[s]
 
 	def save_model(self,filename):
+		print "saving model to file:",filename
 		w1=self.classifier.get_w1()
 		w2=self.classifier.get_w2()
 		b1=self.classifier.get_b1()
@@ -440,10 +451,10 @@ class Parser:
 		#print self.Eb.shape
 		#load W1
 		sep=data.readline()
-		self.W1=np.zeros([self.hidden_size,self.embedding_size*self.num_tokens])
+		self.W1=np.zeros([self.hidden_size,self.config.input_length])
 		for i in range(self.hidden_size):
 			sep=data.readline().strip().split()
-			for j in range(self.embedding_size*self.num_tokens):
+			for j in range(self.config.input_length):
 				self.W1[i][j]=float(sep[j])
 		#print self.W1
 		#load b1
@@ -484,6 +495,7 @@ class Parser:
 			predicted.append(self.predict(test_sent))
 		result=self.evaluate(test_sents,predicted,test_trees)
 		print result
+		return result
 
 	def predict(self,sent):
 		num_trans=len(self.system.transitions)

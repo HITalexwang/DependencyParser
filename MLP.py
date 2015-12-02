@@ -33,7 +33,7 @@ class MLP(object):
         self.Eb[self.config.pos_tokens_up_bound:,self.config.label_emb_size:]*=0
         #print self.Eb[self.config.pos_tokens_up_bound,:]
         #print self.Eb[self.config.word_tokens_num,:]
-        print self.w[0].shape,self.w[1].shape,self.Eb.shape
+        #print self.w[0].shape,self.w[1].shape,self.Eb.shape
 
         self.num_tokens=self.config.num_tokens
         self.hidden_size=size[1]
@@ -45,6 +45,14 @@ class MLP(object):
         self.ada_eps=self.config.ada_eps
         self.training_threads=self.config.training_threads
         self.trunk_size=self.batch_size/self.training_threads
+
+        self.grad_w=[np.zeros(w.shape) for w in self.w]
+        self.grad_b=[np.zeros(b.shape) for b in self.b]
+        self.grad_Eb=np.zeros(self.Eb.shape)
+
+        self.eg2w=[np.zeros(w.shape) for w in self.w]
+        self.eg2b=[np.zeros(b.shape) for b in self.b]
+        self.eg2Eb=np.zeros(self.Eb.shape)
 
         if not pre_computed_ids==None:
             self.pre_computed_ids=pre_computed_ids
@@ -102,9 +110,8 @@ class MLP(object):
             hidden3*=0
             (label,feature)=mini_batch[i]
 
-            offset=0
-            time1=time.time()
-
+            
+            """
             for j in xrange(self.num_tokens):
                 E_index=feature[j]
                 index=E_index*self.num_tokens+j
@@ -125,7 +132,34 @@ class MLP(object):
                 elif j>=self.config.pos_tokens_up_bound:
                     hidden[:,0]+=np.dot(self.w[0][:,offset:offset+self.config.label_emb_size],np.transpose(self.Eb[E_index,:self.config.label_emb_size]))
                     offset+=self.config.label_emb_size
-                
+            """
+            offset=0
+            time1=time.time()
+            for j in xrange(self.config.word_tokens_num):
+                E_index=feature[j]
+                index=E_index*self.num_tokens+j
+                if index in self.pre_map:
+                    hidden[:,0]+=np.transpose(self.saved[self.pre_map[index]][:])
+                else:
+                    hidden[:,0]+=np.dot(self.w[0][:,offset:offset+self.config.embedding_size],np.transpose(self.Eb[E_index,:]))
+                offset+=self.config.embedding_size
+            for j in xrange(self.config.word_tokens_num,self.config.pos_tokens_up_bound):
+                E_index=feature[j]
+                index=E_index*self.num_tokens+j
+                if index in self.pre_map:
+                    hidden[:,0]+=np.transpose(self.saved[self.pre_map[index]][:])
+                else:
+                    hidden[:,0]+=np.dot(self.w[0][:,offset:offset+self.config.pos_emb_size],np.transpose(self.Eb[E_index,:self.config.pos_emb_size]))
+                offset+=self.config.pos_emb_size
+            for j in xrange(self.config.pos_tokens_up_bound,self.config.num_tokens):
+                E_index=feature[j]
+                index=E_index*self.num_tokens+j
+                if index in self.pre_map:
+                    hidden[:,0]+=np.transpose(self.saved[self.pre_map[index]][:])
+                else:
+                    hidden[:,0]+=np.dot(self.w[0][:,offset:offset+self.config.label_emb_size],np.transpose(self.Eb[E_index,:self.config.label_emb_size]))
+                offset+=self.config.label_emb_size
+
             hidden=hidden+self.b[0]
             hidden3=np.power(hidden,3)
 
@@ -182,6 +216,7 @@ class MLP(object):
             grad_hidden=grad_hidden3*3*hidden*hidden
             grad_b[0]+=grad_hidden
 
+            """
             offset=0
             for j in xrange(self.num_tokens):
                 E_index=feature[j]
@@ -208,6 +243,35 @@ class MLP(object):
                     grad_Eb[E_index,:self.config.label_emb_size]+=np.dot(np.transpose(grad_hidden[:,0]),self.w[0][:,offset:offset+self.config.label_emb_size])
                     offset+=self.config.label_emb_size
             #print grad_w[0]
+            """
+            offset=0
+            for j in xrange(self.config.word_tokens_num):
+                E_index=feature[j]
+                index=E_index*self.num_tokens+j
+                if index in self.pre_map:
+                    grad_saved[self.pre_map[index],:]+=np.transpose(grad_hidden[:,0])
+                else:
+                    grad_w[0][:,offset:offset+self.config.embedding_size]+=np.outer(grad_hidden[:,0],self.Eb[E_index,:])
+                    grad_Eb[E_index,:]+=np.dot(np.transpose(grad_hidden[:,0]),self.w[0][:,offset:offset+self.config.embedding_size])
+                offset+=self.config.embedding_size
+            for j in xrange(self.config.word_tokens_num,self.config.pos_tokens_up_bound):
+                E_index=feature[j]
+                index=E_index*self.num_tokens+j
+                if index in self.pre_map:
+                    grad_saved[self.pre_map[index],:]+=np.transpose(grad_hidden[:,0])
+                else:
+                    grad_w[0][:,offset:offset+self.config.pos_emb_size]+=np.outer(grad_hidden[:,0],self.Eb[E_index,:self.config.pos_emb_size])
+                    grad_Eb[E_index,:self.config.pos_emb_size]+=np.dot(np.transpose(grad_hidden[:,0]),self.w[0][:,offset:offset+self.config.pos_emb_size])
+                offset+=self.config.pos_emb_size
+            for j in xrange(self.config.pos_tokens_up_bound,self.config.num_tokens):
+                E_index=feature[j]
+                index=E_index*self.num_tokens+j
+                if index in self.pre_map:
+                    grad_saved[self.pre_map[index],:]+=np.transpose(grad_hidden[:,0])
+                else:
+                    grad_w[0][:,offset:offset+self.config.label_emb_size]+=np.outer(grad_hidden[:,0],self.Eb[E_index,:self.config.label_emb_size])
+                    grad_Eb[E_index,:self.config.label_emb_size]+=np.dot(np.transpose(grad_hidden[:,0]),self.w[0][:,offset:offset+self.config.label_emb_size])
+                offset+=self.config.label_emb_size
 
             time9=time.time()
             bp_time+=time9-time7
@@ -248,24 +312,7 @@ class MLP(object):
         start=time.time()
         training_data=self.pre_process()
         print "pre-processing used time:",time.time()-start
-        self.grad_w=[np.zeros(w.shape) for w in self.w]
-        self.grad_b=[np.zeros(b.shape) for b in self.b]
-        self.grad_Eb=np.zeros(self.Eb.shape)
 
-        self.eg2w=[np.zeros(w.shape) for w in self.w]
-        self.eg2b=[np.zeros(b.shape) for b in self.b]
-        self.eg2Eb=np.zeros(self.Eb.shape)
-
-        """
-        hid=T.matrix("hid")
-        b=T.matrix("b")
-        w1=T.matrix("w1")
-        hid3=T.power(hid+b,3)
-        sco=T.dot(w1,hid3)
-        self.forward_function=theano.function([hid,b,w1],sco)
-        """
-
-        #check=False
         if self.config.check:
             self.check_gradient(training_data)
         else:
@@ -281,17 +328,6 @@ class MLP(object):
                     self.grad_w[1]*=0
                     self.grad_b[0]*=0
                     self.grad_Eb*=0
-            #training_data=self.pre_process()
-        
-        """
-                start1=time.time()
-                self.pre_compute(self.get_pre_computed_ids(batch))
-                time2=time.time()
-                print "pre_computing time:",time2-start1
-                #batch=self.pre_process_batch(batch)
-                self.backprop(batch)
-                print "back propogation used time in totol:",time.time()-time2
-                """
 
     def pre_process(self):
         training_data=[]
@@ -545,19 +581,8 @@ class MLP(object):
             (label,feature)=batch[i]
             offset=0
             for j in range(self.num_tokens):
-                """
-                tok=feature[j]
-                E_index=tok
-                hidden[:,0]+=np.dot(self.w[0][:,offset:offset+self.embed_size],np.transpose(self.Eb[E_index,:]))
-                offset+=self.embed_size
-                """
                 E_index=feature[j]
                 if j<self.config.word_tokens_num:
-                    """
-                    for k in range(self.hidden_size):
-                        for l in range(self.embed_size):
-                            hidden[k][0]+=self.w[0][k][offset+l]*self.Eb[E_index][l]
-                    """
                     hidden[:,0]+=np.dot(self.w[0][:,offset:offset+self.config.embedding_size],np.transpose(self.Eb[E_index,:]))
                     offset+=self.config.embedding_size
                 elif self.config.word_tokens_num-1<j<self.config.pos_tokens_up_bound:
@@ -618,15 +643,23 @@ class MLP(object):
         #scores=np.zeros(self.size[2])
         hidden=np.zeros([self.hidden_size,1])
         offset=0
+        for j in range(len(features)):
+                E_index=features[j]
+                if j<self.config.word_tokens_num:
+                    hidden[:,0]+=np.dot(self.w[0][:,offset:offset+self.config.embedding_size],np.transpose(self.Eb[E_index,:]))
+                    offset+=self.config.embedding_size
+                elif self.config.word_tokens_num-1<j<self.config.pos_tokens_up_bound:
+                    hidden[:,0]+=np.dot(self.w[0][:,offset:offset+self.config.pos_emb_size],np.transpose(self.Eb[E_index,:self.config.pos_emb_size]))
+                    offset+=self.config.pos_emb_size
+                elif j>=self.config.pos_tokens_up_bound:
+                    hidden[:,0]+=np.dot(self.w[0][:,offset:offset+self.config.label_emb_size],np.transpose(self.Eb[E_index,:self.config.label_emb_size]))
+                    offset+=self.config.label_emb_size
+        """
         for i in range(len(features)):
             E_index=features[i]
-            """
-            for j in range(self.hidden_size):
-                for k in range(self.embed_size):
-                    hidden[j]+=self.Eb[E_index][k]*self.w[0][j][offset+k]
-            """
             hidden[:,0]+=np.dot(self.w[0][:,offset:offset+self.embed_size],np.transpose(self.Eb[E_index,:]))
             offset+=self.embed_size
+        """
 
         hidden+=self.b[0]
         hidden=hidden*hidden*hidden
