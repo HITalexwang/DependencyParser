@@ -180,7 +180,8 @@ class Parser:
 		#Eb=np.zeros([Eb_entries,embedding_size],float) 
 		Eb=np.random.rand(Eb_entries,embedding_size)#init Embeddings randomly for words,poss and labels
 		Eb=(Eb*2-1)*init_range
-		W1_ncol=embedding_size*num_basic_tokens
+		#W1_ncol=embedding_size*num_basic_tokens
+		W1_ncol=self.config.input_length
 		W1_init_range=np.sqrt(6.0/(W1_ncol+hidden_size))
 		#W1=np.zeros([hidden_size,W1_ncol],float)
 		W1=np.random.rand(hidden_size,W1_ncol)
@@ -219,7 +220,8 @@ class Parser:
 		print "creating classifier (",self.embedding_size*self.num_tokens,",",self.hidden_size,",",n_actions,")"
 		#classifier=NNClassifier(dataset,Eb,W1,b1,W2,self.pre_computed_ids)
 		(features,labels)=self.preprocess_dataset(dataset)
-		self.classifier=MLP.MLP([self.embedding_size*self.num_tokens,self.hidden_size,n_actions],Eb,W1,b1,W2,self.pre_computed_ids,features,labels)
+		#self.classifier=MLP.MLP([self.embedding_size*self.num_tokens,self.hidden_size,n_actions],Eb,W1,b1,W2,self.pre_computed_ids,features,labels)
+		self.classifier=MLP.MLP([self.config.input_length,self.hidden_size,n_actions],Eb,W1,b1,W2,self.pre_computed_ids,features,labels)
 
 	def preprocess_dataset(self,dataset):
 		features=[]
@@ -244,7 +246,6 @@ class Parser:
 				while(not self.system.is_terminal(c)):
 					oracle=self.system.get_oracle(c,trees[i])
 					features=self.get_features(c)
-					#print features
 					label=[]
 					for k in range(num_trans):
 						label.append(-1)
@@ -257,6 +258,7 @@ class Parser:
 					ds_train.add_sample(features,label)
 					for j in range(len(features)):
 						feature_id=features[j]*len(features)+j
+						#print features[j],j
 						if feature_id not in tokpos_count:
 							tokpos_count[feature_id]=1
 						else:

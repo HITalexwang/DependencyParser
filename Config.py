@@ -10,10 +10,16 @@ class Config:
 		self.labeled=True
 		self.num_tokens=48
 		self.embedding_size=50
+		self.pos_emb_size=10
+		self.label_emb_size=20
 		self.num_pre_computed=100000
 		self.hidden_size=200
-		self.pos_emb_size=10
-		self.label_emb_size=10
+		self.word_tokens_num=18
+		self.pos_tokens_num=18
+		self.label_tokens_num=12
+		self.pos_tokens_up_bound=self.word_tokens_num+self.pos_tokens_num#18+18
+		self.label_tokens_up_bound=self.pos_tokens_up_bound+self.label_tokens_num#18+18+12
+		self.input_length=self.word_tokens_num*self.embedding_size+self.pos_tokens_num*self.pos_emb_size+self.label_tokens_num*self.label_emb_size
 
         	self.reg_parameter=1.0e-8
         	self.batch_size=10000
@@ -23,7 +29,7 @@ class Config:
         	self.pre_threads=1
 
         	self.training_file_name='data/en-universal-dev-brown.conll'#en-universal-dev-brown.conll
-        	self.embedding_file_name='data/word_embeddings.txt'
+        	self.embedding_file_name='data/word_embeddings.txt'#word_embeddings.txt
         	self.test_file_name='data/en-universal-dev-brown.conll'
         	self.save_model_name='data/test_model'
         	self.load_file_name='data/h_200,E_50_model'
