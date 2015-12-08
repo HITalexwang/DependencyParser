@@ -85,6 +85,7 @@ class MLP(object):
             raw_in=raw_input("pause")
         return (sum1,sum2)
 
+    @profile
     def backprop(self,mini_batch,costs):
         #print self.grad_w[1].shape
         forward_time=0
@@ -473,6 +474,7 @@ class MLP(object):
         print "diff w2:",diff_grad_w2
         print "diff Eb:",diff_grad_Eb
 
+    @profile
     def compute_cost_function(self,batch):
         self.costs=[]
         self.loss=0
