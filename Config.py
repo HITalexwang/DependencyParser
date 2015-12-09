@@ -12,8 +12,8 @@ class Config:
 		self.labeled=True
 		self.num_tokens=48
 		self.embedding_size=50
-		self.pos_emb_size=20
-		self.label_emb_size=20
+		self.pos_emb_size=50
+		self.label_emb_size=50
 		self.num_pre_computed=100000
 		self.hidden_size=200
 		self.word_tokens_num=18
@@ -30,7 +30,7 @@ class Config:
         	self.training_threads=6
         	self.pre_threads=1
 
-        	self.training_file_name='data/test1'#en-universal-dev-brown.conll
+        	self.training_file_name='data/en-universal-dev-brown.conll'#en-universal-dev-brown.conll
         	self.embedding_file_name='data/word_embeddings.txt'#word_embeddings.txt
         	self.test_file_name='data/test1'#en-universal-dev-brown.conll
         	self.save_model_name='data/test_model'
