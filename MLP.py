@@ -1,5 +1,5 @@
 # -*- coding: cp936 -*-
-import random
+import random,math
 import numpy as np
 import os
 import time
@@ -31,9 +31,6 @@ class MLP(object):
         self.Eb=Eb
         self.Eb[self.config.word_tokens_num:self.config.pos_tokens_up_bound,self.config.pos_emb_size:]*=0
         self.Eb[self.config.pos_tokens_up_bound:,self.config.label_emb_size:]*=0
-        #print self.Eb[self.config.pos_tokens_up_bound,:]
-        #print self.Eb[self.config.word_tokens_num,:]
-        #print self.w[0].shape,self.w[1].shape,self.Eb.shape
 
         self.num_tokens=self.config.num_tokens
         self.hidden_size=size[1]
@@ -85,7 +82,7 @@ class MLP(object):
             raw_in=raw_input("pause")
         return (sum1,sum2)
 
-    @profile
+    #@profile
     def backprop(self,mini_batch,costs):
         #print self.grad_w[1].shape
         forward_time=0
@@ -110,30 +107,6 @@ class MLP(object):
             hidden*=0
             hidden3*=0
             (label,feature)=mini_batch[i]
-
-            
-            """
-            for j in xrange(self.num_tokens):
-                E_index=feature[j]
-                index=E_index*self.num_tokens+j
-                if index in self.pre_map:
-                    hidden[:,0]+=np.transpose(self.saved[self.pre_map[index]][:])
-                    if j<self.config.word_tokens_num:
-                        offset+=self.config.embedding_size
-                    elif self.config.word_tokens_num-1<j<self.config.pos_tokens_up_bound:
-                        offset+=self.config.pos_emb_size
-                    elif j>=self.config.pos_tokens_up_bound:
-                        offset+=self.config.label_emb_size
-                elif j<self.config.word_tokens_num:
-                    hidden[:,0]+=np.dot(self.w[0][:,offset:offset+self.config.embedding_size],np.transpose(self.Eb[E_index,:]))
-                    offset+=self.config.embedding_size
-                elif self.config.word_tokens_num-1<j<self.config.pos_tokens_up_bound:
-                    hidden[:,0]+=np.dot(self.w[0][:,offset:offset+self.config.pos_emb_size],np.transpose(self.Eb[E_index,:self.config.pos_emb_size]))
-                    offset+=self.config.pos_emb_size
-                elif j>=self.config.pos_tokens_up_bound:
-                    hidden[:,0]+=np.dot(self.w[0][:,offset:offset+self.config.label_emb_size],np.transpose(self.Eb[E_index,:self.config.label_emb_size]))
-                    offset+=self.config.label_emb_size
-            """
             offset=0
             time1=time.time()
             for j in xrange(self.config.word_tokens_num):
@@ -179,12 +152,24 @@ class MLP(object):
             max_score=score[opt_label][0]
             sum1=0
             sum2=0
+
+            """
             for j in xrange(self.num_labels):
                 if label[j]>=0:
-                    score[j][0]=np.exp(score[j][0]-max_score)
+                    #score[j][0]=math.exp(score[j][0]-max_score)
                     if label[j]==1:
                         sum1+=score[j][0]
                     sum2+=score[j][0]
+            """
+            
+
+            label_a=np.array(label)
+            rows=label_a>=0
+            row_one=label_a==1
+            score[rows,:]=np.exp(score[rows,:]-max_score)
+            sum1+=score[row_one,0][0]
+            sum2=np.sum(score[rows,:])
+
             if sum1==0:
                 print "opt_label=",opt_label
                 print "max_score=",max_score
@@ -200,51 +185,26 @@ class MLP(object):
 
             #compute gradient
             time7=time.time()
-
             grad_hidden3*=0
+
+            """
             for i in xrange(self.num_labels):
                 if label[i]>=0:#important
                     delta=-(label[i]-score[i][0]/sum2)/mini_batch_size
-                    """
-                    for j in range(self.hidden_size):
-                        grad_w[1][i][j]+=delta*hidden3[j][0]
-                        grad_hidden3[j][0]+=delta*self.w[1][i][j]
-                    """
                     grad_w[1][i,:]+=delta*hidden3[:,0]
                     grad_hidden3[:,0]+=delta*self.w[1][i,:]
+            """
+
+            #print label_a[rows]
+            delta=-(label_a[rows]-score[rows,0]/sum2)/mini_batch_size
+            grad_w[1][rows,:]+=np.outer(delta,hidden3[:,0])
+            grad_hidden3[:,0]+=np.dot(delta,self.w[1][rows,:])
 
             grad_hidden*=0
             grad_hidden=grad_hidden3*3*hidden*hidden
             grad_b[0]+=grad_hidden
 
-            """
-            offset=0
-            for j in xrange(self.num_tokens):
-                E_index=feature[j]
-                index=E_index*self.num_tokens+j
-                #print j,E_index,offset
-                if index in self.pre_map:
-                    grad_saved[self.pre_map[index],:]+=np.transpose(grad_hidden[:,0])
-                    if j<self.config.word_tokens_num:
-                        offset+=self.config.embedding_size
-                    elif self.config.word_tokens_num-1<j<self.config.pos_tokens_up_bound:
-                        offset+=self.config.pos_emb_size
-                    elif j>=self.config.pos_tokens_up_bound:
-                        offset+=self.config.label_emb_size
-                elif j<self.config.word_tokens_num:
-                    grad_w[0][:,offset:offset+self.config.embedding_size]+=np.outer(grad_hidden[:,0],self.Eb[E_index,:])
-                    grad_Eb[E_index,:]+=np.dot(np.transpose(grad_hidden[:,0]),self.w[0][:,offset:offset+self.config.embedding_size])
-                    offset+=self.config.embedding_size
-                elif self.config.word_tokens_num-1<j<self.config.pos_tokens_up_bound:
-                    grad_w[0][:,offset:offset+self.config.pos_emb_size]+=np.outer(grad_hidden[:,0],self.Eb[E_index,:self.config.pos_emb_size])
-                    grad_Eb[E_index,:self.config.pos_emb_size]+=np.dot(np.transpose(grad_hidden[:,0]),self.w[0][:,offset:offset+self.config.pos_emb_size])
-                    offset+=self.config.pos_emb_size
-                elif j>=self.config.pos_tokens_up_bound:
-                    grad_w[0][:,offset:offset+self.config.label_emb_size]+=np.outer(grad_hidden[:,0],self.Eb[E_index,:self.config.label_emb_size])
-                    grad_Eb[E_index,:self.config.label_emb_size]+=np.dot(np.transpose(grad_hidden[:,0]),self.w[0][:,offset:offset+self.config.label_emb_size])
-                    offset+=self.config.label_emb_size
-            #print grad_w[0]
-            """
+            
             offset=0
             for j in xrange(self.config.word_tokens_num):
                 E_index=feature[j]
@@ -314,21 +274,18 @@ class MLP(object):
         training_data=self.pre_process()
         print "pre-processing used time:",time.time()-start
 
-        if self.config.check:
-            self.check_gradient(training_data)
-        else:
-            for i in xrange(iter):
-                print "iter ",i
-                random.shuffle(training_data)
-                batchs=[training_data[j:j+self.batch_size]
-                                for j in range(0,len(training_data),self.batch_size)]
-                for batch in batchs:
-                    self.compute_cost_function(batch)
-                    self.update()
-                    self.grad_w[0]*=0
-                    self.grad_w[1]*=0
-                    self.grad_b[0]*=0
-                    self.grad_Eb*=0
+        for i in xrange(iter):
+            print "iter ",i
+            random.shuffle(training_data)
+            batchs=[training_data[j:j+self.batch_size]
+                            for j in range(0,len(training_data),self.batch_size)]
+            for batch in batchs:
+                self.compute_cost_function(batch)
+                self.update()
+                self.grad_w[0]*=0
+                self.grad_w[1]*=0
+                self.grad_b[0]*=0
+                self.grad_Eb*=0
 
     def pre_process(self):
         training_data=[]
@@ -457,7 +414,8 @@ class MLP(object):
             self.grad_Eb[E_index,:]+=np.dot(self.grad_saved[map_x,:],self.w[0][:,offset:offset+self.embed_size])
             """
 
-    def check_gradient(self,batch):
+    def check_gradient(self):
+        batch=self.pre_process()
         print "---checking gradient---"
         self.compute_cost_function(batch)
         self.compute_numerical_gradient(batch)

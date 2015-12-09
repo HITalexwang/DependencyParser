@@ -538,13 +538,28 @@ class Parser:
 		result['LAS']=las_cnt/float(sample_sum)
 		return result
 
+	def check_gradient(self):
+		sents=[]
+		trees=[]
+		self.load_file(self.config.training_file_name,sents,trees,True)#en-universal-dev-brown.conll#en-universal-train-brown.conll
+		self.print_tree_states(trees)
+
+		(embed_ids,embeddings)=self.read_embed_file('data/embeddings/embed')#word_embeddings.txt
+		(known_words,known_poss,known_labels)=self.gen_dictionaries(sents,trees,True)
+		ldict=known_labels
+		#print ldict
+		#ldict.remove('-NULL-')  #use -NULL- to denote the ROOT node's arc label
+		self.system=ArcStandard.ArcStandard(ldict,'CN',True)
+		self.setup_classifier_for_trainning(sents,trees,True)
+		self.classifier.check_gradient()
+
 if __name__=="__main__":
 	#arc=ArcStandard()
 	parser=Parser()
-	if not parser.config.is_test:
-		parser.train()
-		#parser.save_model(parser.config.save_model_name)
-		#parser.test(parser.config.test_file_name)#en-universal-dev-brown.conll
-	else:
+	if parser.config.check:
+		parser.check_gradient()	
+	elif parser.config.is_test:
 		parser.load_model(parser.config.load_file_name)
 		parser.test(parser.config.test_file_name)
+	else:
+		parser.train()
