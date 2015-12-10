@@ -6,6 +6,7 @@ import time,os
 import multiprocessing
 import copy_reg,types
 
+"""
 #solve the problem that can't use pool.map(self.~)
 def _pickle_method(method):
     func_name = method.im_func.__name__
@@ -27,6 +28,7 @@ def _unpickle_method(func_name, obj, cls):
     return func.__get__(obj, cls)
 
 copy_reg.pickle(types.MethodType, _pickle_method, _unpickle_method)
+"""
 
 class Cost:
     def __init__(self,grad_Eb,grad_W1,grad_b1,grad_W2,loss,correct):
@@ -84,6 +86,7 @@ class MLP(object):
             self.labels=labels
         #print size
 
+    """
     def __getstate__(self):
             self_dict = self.__dict__.copy()
             del self_dict['pool']
@@ -91,20 +94,89 @@ class MLP(object):
 
     def __setstate__(self, state):
             self.__dict__.update(state)
+    """
 
-    def softmax_log(self,a1,label):
-        a_max=np.argmax(a1,0)
-        #print a1[a_max[0]][0]
-        for i in range(len(label)):
-            if label[i]==1:
-                sum1=np.exp(a1[i][0]-a1[a_max[0]][0])
-                #print sum1
-        sum2=np.sum([np.exp(ai-a1[a_max[0]][0]) for ai in a1])
-        #print sum1
-        if sum1==0:
-            print "sum1=0,a1:",a1
-            raw_in=raw_input("pause")
-        return (sum1,sum2)
+    def train(self,iter):
+        start=time.time()
+        training_data=self.pre_process()
+
+        #creating process pool
+        self.pool=multiprocessing.Pool(processes=self.config.training_threads)
+
+        for i in xrange(iter):
+            print "iter ",i
+            random.shuffle(training_data)
+            batchs=[training_data[j:j+self.batch_size]
+                            for j in range(0,len(training_data),self.batch_size)]
+            for batch in batchs:
+                self.compute_cost_function(batch)
+                self.update()
+                self.grad_w[0]*=0
+                self.grad_w[1]*=0
+                self.grad_b[0]*=0
+                self.grad_Eb*=0
+        self.pool.close()
+        self.pool.join()
+
+    def compute_cost_function(self,batch):
+        self.costs=[]
+        self.loss=0
+        self.correct=0
+        time1=time.time()
+        pre_computed_ids=self.get_pre_computed_ids(batch)
+        self.pre_compute(pre_computed_ids)
+        time2=time.time()
+        print "pre computing used time:",time2-time1
+        self.grad_saved*=0
+    
+        trunks=[batch[j:j+self.trunk_size]
+                         for j in xrange(0,len(batch),self.trunk_size)]
+
+        """
+        #print len(trunks)
+        pool=multiprocessing.Pool(processes=self.config.training_threads)
+        results=pool.map(self.backprop,trunks)
+        print len(results)
+        pool.close()
+        pool.join()
+        for (cost,grad_saved) in results:
+            self.merge_cost(cost)
+            self.grad_saved+=grad_saved
+        """
+
+        costs=multiprocessing.Queue(self.training_threads)
+        process_pool=[]
+        mgr=multiprocessing.Manager()
+        costs=mgr.Queue()
+        try:
+            for trunk in trunks:
+                pr=multiprocessing.Process(target=self.backprop,args=(trunk,costs))
+                pr.start()
+                process_pool.append(pr)
+        except:
+            print "Error: unable to start thread"
+        for process in process_pool:
+            process.join()
+        for i in xrange(len(trunks)):
+            (cost,grad_saved)=costs.get()
+            self.merge_cost(cost)
+            self.grad_saved+=grad_saved
+
+        """
+        costs=multiprocessing.Queue(self.training_threads)
+        self.backprop(batch,costs)
+        (cost,grad_saved)=costs.get()
+        self.merge_cost(cost)
+        self.grad_saved+=grad_saved
+        """
+
+        self.loss/=len(trunks)
+        time3=time.time()
+        print "backprop used time:",time3-time2
+        self.add_l2_regularization()
+        print "###loss:",self.loss,"###\n###accuracy:",float(self.correct)/len(batch),"###"
+        self.back_prop_saved(pre_computed_ids)
+        print "save backprop used time:",time.time()-time3
 
     #@profile
     def backprop(self,mini_batch,costs):
@@ -201,7 +273,6 @@ class MLP(object):
                 print "score:",score
                 raw_input("pause")
             time6=time.time()
-            #print "calculate softmax_log used",time6-time5
 
             forward_time+=time6-time1
             loss+=(np.log(sum2)-np.log(sum1))
@@ -259,16 +330,11 @@ class MLP(object):
 
             time9=time.time()
             bp_time+=time9-time7
-            #print "calculate grad eb used",time9-time8
 
-        #print "forward_time:",forward_time
-        #print "bp_time:",bp_time
         loss/=len(mini_batch)
-        #accuracy=correct/float(mini_batch_size)
         cost=Cost(grad_Eb,grad_w[0],grad_b[0],grad_w[1],loss,correct)
-        #self.costs.append(cost)
-        #costs.put((grad_Eb,grad_w[1],grad_b[0],loss,correct,grad_w[0]))
         costs.put((cost,grad_saved))
+        #return (cost,grad_saved)
 
     def add_l2_regularization(self):
         self.loss+=self.reg_parameter*np.sum(self.w[0]*self.w[0])/2.0
@@ -291,24 +357,6 @@ class MLP(object):
         self.w[1]-=self.alpha*self.grad_w[1]/np.sqrt(self.eg2w[1]+self.ada_eps)
         self.b[0]-=self.alpha*self.grad_b[0]/np.sqrt(self.eg2b[0]+self.ada_eps)
         self.Eb-=self.alpha*self.grad_Eb/np.sqrt(self.eg2Eb+self.ada_eps)
-
-    def train(self,iter):
-        start=time.time()
-        training_data=self.pre_process()
-        print "pre-processing used time:",time.time()-start
-
-        for i in xrange(iter):
-            print "iter ",i
-            random.shuffle(training_data)
-            batchs=[training_data[j:j+self.batch_size]
-                            for j in range(0,len(training_data),self.batch_size)]
-            for batch in batchs:
-                self.compute_cost_function(batch)
-                self.update()
-                self.grad_w[0]*=0
-                self.grad_w[1]*=0
-                self.grad_b[0]*=0
-                self.grad_Eb*=0
 
     def pre_process(self):
         training_data=[]
@@ -457,51 +505,6 @@ class MLP(object):
         print "diff w2:",diff_grad_w2
         print "diff Eb:",diff_grad_Eb
 
-    def compute_cost_function(self,batch):
-        self.costs=[]
-        self.loss=0
-        self.correct=0
-        time1=time.time()
-        pre_computed_ids=self.get_pre_computed_ids(batch)
-        self.pre_compute(pre_computed_ids)
-        time2=time.time()
-        print "pre computing used time:",time2-time1
-        self.grad_saved*=0
-    
-        trunks=[batch[j:j+self.trunk_size]
-                         for j in xrange(0,len(batch),self.trunk_size)]
-        costs=multiprocessing.Queue(self.training_threads)
-        process_pool=[]
-        mgr=multiprocessing.Manager()
-        costs=mgr.Queue()
-        try:
-            for trunk in trunks:
-                pr=multiprocessing.Process(target=self.backprop,args=(trunk,costs))
-                pr.start()
-                process_pool.append(pr)
-        except:
-            print "Error: unable to start thread"
-        for process in process_pool:
-            process.join()
-        for i in xrange(len(trunks)):
-            (cost,grad_saved)=costs.get()
-            self.merge_cost(cost)
-            self.grad_saved+=grad_saved
-        """
-        costs=multiprocessing.Queue(self.training_threads)
-        self.backprop(batch,costs)
-        (cost,grad_saved)=costs.get()
-        self.merge_cost(cost)
-        self.grad_saved+=grad_saved
-        """
-        self.loss/=len(trunks)
-        time3=time.time()
-        print "backprop used time:",time3-time2
-        self.add_l2_regularization()
-        print "###loss:",self.loss,"###\n###accuracy:",float(self.correct)/len(batch),"###"
-        self.back_prop_saved(pre_computed_ids)
-        print "save backprop used time:",time.time()-time3
-
     def merge_cost(self,cost):
         self.grad_w[0]+=cost.grad_W1
         self.grad_w[1]+=cost.grad_W2
@@ -581,7 +584,6 @@ class MLP(object):
                     if (opt_label<0 or score[j][0]>score[opt_label][0]):
                         opt_label=j
 
-            #(sum1,sum2)=self.softmax_log(score,label)
             max_score=score[opt_label][0]
             sum1=0
             sum2=0
@@ -597,7 +599,6 @@ class MLP(object):
                 print "score:",score
                 raw_input("pause")
 
-            #(sum1,sum2)=self.softmax_log(a1,label)
             v_cost+=np.log(sum2)-np.log(sum1)
         v_cost/=len(batch)
         v_cost+=self.reg_parameter*np.sum(self.w[0]*self.w[0])/2.0
