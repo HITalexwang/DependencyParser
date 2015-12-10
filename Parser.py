@@ -227,7 +227,7 @@ class Parser:
 		print "---Setup Classifier---"
 		print "found embeddings:",in_embed,"/",len(self.known_words)
 		dataset=self.gen_train_samples(sents,trees)
-		print "creating classifier (",self.embedding_size*self.num_tokens,",",self.hidden_size,",",n_actions,")"
+		print "creating classifier (",self.config.input_length,",",self.hidden_size,",",n_actions,")"
 		#classifier=NNClassifier(dataset,Eb,W1,b1,W2,self.pre_computed_ids)
 		(features,labels)=self.preprocess_dataset(dataset)
 		#self.classifier=MLP.MLP([self.embedding_size*self.num_tokens,self.hidden_size,n_actions],Eb,W1,b1,W2,self.pre_computed_ids,features,labels)
