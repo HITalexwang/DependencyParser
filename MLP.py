@@ -1,11 +1,32 @@
 # -*- coding: cp936 -*-
+import Config
 import random,math
 import numpy as np
-import os
-import time
-import threading
+import time,os
 import multiprocessing
-import Config
+import copy_reg,types
+
+#solve the problem that can't use pool.map(self.~)
+def _pickle_method(method):
+    func_name = method.im_func.__name__
+    obj = method.im_self
+    cls = method.im_class
+    if func_name.startswith('__') and not func_name.endswith('__'): #deal with mangled names
+        cls_name = cls.__name__.lstrip('_')
+        func_name = '_' + cls_name + func_name
+    return _unpickle_method, (func_name, obj, cls)
+
+def _unpickle_method(func_name, obj, cls):
+    for cls in cls.__mro__:
+        try:
+            func = cls.__dict__[func_name]
+        except KeyError:
+            pass
+        else:
+            break
+    return func.__get__(obj, cls)
+
+copy_reg.pickle(types.MethodType, _pickle_method, _unpickle_method)
 
 class Cost:
     def __init__(self,grad_Eb,grad_W1,grad_b1,grad_W2,loss,correct):
@@ -61,12 +82,15 @@ class MLP(object):
             self.features=features
         if not labels==None:
             self.labels=labels
-        
-        print size#,self.num_tokens
-    """def forward(self,a):
-        for b,w in zip(self.b,self.w):
-            a=self.sigmoid(np.dot(w,a)+b)
-        return a"""
+        #print size
+
+    def __getstate__(self):
+            self_dict = self.__dict__.copy()
+            del self_dict['pool']
+            return self_dict
+
+    def __setstate__(self, state):
+            self.__dict__.update(state)
 
     def softmax_log(self,a1,label):
         a_max=np.argmax(a1,0)
