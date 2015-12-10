@@ -140,16 +140,20 @@ class MLP(object):
             #softmax
             score=np.dot(self.w[1],hidden3)
 
-            #score=self.forward_function(hidden,self.b[0],self.w[1])
-
+            """
             opt_label=-1
             for j in xrange(self.num_labels):
                 if label[j]>=0:
                     if (score[j][0]>score[opt_label][0] or opt_label<0):
                         opt_label=j
-
-            #(sum1,sum2)=self.softmax_log(score,label)
             max_score=score[opt_label][0]
+            """
+
+            label_a=np.array(label)
+            rows=label_a>=0
+            opt_label=np.where(score==np.max(score[rows,:]))[0][0]
+            max_score=score[opt_label][0]
+
             sum1=0
             sum2=0
 
@@ -162,13 +166,10 @@ class MLP(object):
                     sum2+=score[j][0]
             """
             
-
-            label_a=np.array(label)
-            rows=label_a>=0
             row_one=label_a==1
             score[rows,:]=np.exp(score[rows,:]-max_score)
             sum1+=score[row_one,0][0]
-            sum2=np.sum(score[rows,:])
+            sum2+=np.sum(score[rows,:])
 
             if sum1==0:
                 print "opt_label=",opt_label
@@ -195,16 +196,14 @@ class MLP(object):
                     grad_hidden3[:,0]+=delta*self.w[1][i,:]
             """
 
-            #print label_a[rows]
             delta=-(label_a[rows]-score[rows,0]/sum2)/mini_batch_size
             grad_w[1][rows,:]+=np.outer(delta,hidden3[:,0])
             grad_hidden3[:,0]+=np.dot(delta,self.w[1][rows,:])
 
+
             grad_hidden*=0
             grad_hidden=grad_hidden3*3*hidden*hidden
             grad_b[0]+=grad_hidden
-
-            
             offset=0
             for j in xrange(self.config.word_tokens_num):
                 E_index=feature[j]
@@ -444,8 +443,7 @@ class MLP(object):
         time2=time.time()
         print "pre computing used time:",time2-time1
         self.grad_saved*=0
-        
-        """
+    
         trunks=[batch[j:j+self.trunk_size]
                          for j in xrange(0,len(batch),self.trunk_size)]
         costs=multiprocessing.Queue(self.training_threads)
@@ -471,8 +469,8 @@ class MLP(object):
         (cost,grad_saved)=costs.get()
         self.merge_cost(cost)
         self.grad_saved+=grad_saved
-
-        #self.loss/=len(trunks)
+        """
+        self.loss/=len(trunks)
         time3=time.time()
         print "backprop used time:",time3-time2
         self.add_l2_regularization()
