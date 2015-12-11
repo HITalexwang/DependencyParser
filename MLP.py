@@ -160,12 +160,12 @@ class MLP(object):
         
 
         """
-        costs=multiprocessing.Queue(self.training_threads)
-        self.backprop(batch,costs)
-        (cost,grad_saved)=costs.get()
+        costs=multiprocessing.Manager().dict()
+        self.backprop(batch,costs,0)
+        (cost,grad_saved)=costs[0]
         self.merge_cost(cost)
         self.grad_saved+=grad_saved
-        """
+        """        
 
         self.loss/=len(trunks)
         time3=time.time()
@@ -266,7 +266,7 @@ class MLP(object):
             """
             
             row_one=label_a==1
-            score[rows,:]=np.exp(score[rows,:]-max_score)
+            score=np.exp(score-max_score)
             sum1+=score[row_one,0][0]
             sum2+=np.sum(score[rows,:])
 
@@ -293,10 +293,18 @@ class MLP(object):
                     grad_w[1][i,:]+=delta*hidden3[:,0]
                     grad_hidden3[:,0]+=delta*self.w[1][i,:]
             """
-
-            delta=-(label_a[rows]-score[rows,0]/sum2)/mini_batch_size
-            grad_w[1][rows,:][:,active_units]+=np.outer(delta,hidden3[active_units,0])
-            grad_hidden3[active_units,0]+=np.dot(delta,self.w[1][rows,:][:,active_units])
+           
+            z_rows=label_a<0
+            #print label_a.shape,score[:,0].shape
+            delta=-(label_a-score[:,0]/sum2)/mini_batch_size
+            delta[z_rows]=0
+            #print delta
+            #print grad_w[1][rows,:][:,active_units].shape,grad_w[1][rows,:][:,active_units]
+            #print np.outer(delta,hidden3[active_units,0]).shape
+            #print grad_w[1][rows,:][:,active_units]
+            grad_w[1][:,active_units]+=np.outer(delta,hidden3[active_units,0])
+            grad_hidden3[active_units,0]+=np.dot(delta,self.w[1][:,active_units])
+            #print grad_w[1][rows,:][:,active_units]
 
             grad_hidden*=0
             grad_hidden[active_units]=grad_hidden3[active_units]*3*hidden[active_units]*hidden[active_units]
@@ -331,9 +339,10 @@ class MLP(object):
                 offset+=self.config.label_emb_size
 
             time9=time.time()
-            bp_time+=time9-time7
+            bp_time=time9-time7
 
         loss/=len(mini_batch)
+        #print grad_w[1]
         cost=Cost(grad_Eb,grad_w[0],grad_b[0],grad_w[1],loss,correct,dropout_histories)
         costs[return_id]=(cost,grad_saved)
         #costs.put((cost,grad_saved))
@@ -463,6 +472,8 @@ class MLP(object):
             print self.grad_Eb[i,:]
             print "------------------------"
         """
+        #print np.sum(self.num_grad_w[1]*self.num_grad_w[1])
+        #print np.sum(self.grad_w[1]*self.grad_w[1])
         diff_grad_w1=np.sum(np.power(self.num_grad_w[0]-self.grad_w[0],2))/np.sum(np.power(self.num_grad_w[0]+self.grad_w[0],2))
         diff_grad_b1=np.sum(np.power(self.num_grad_b[0]-self.grad_b[0],2))/np.sum(np.power(self.num_grad_b[0]+self.grad_b[0],2))
         diff_grad_w2=np.sum(np.power(self.num_grad_w[1]-self.grad_w[1],2))/np.sum(np.power(self.num_grad_w[1]+self.grad_w[1],2))
@@ -516,25 +527,27 @@ class MLP(object):
     def compute_cost(self,batch):
         v_cost=0
         hidden=np.zeros([self.hidden_size,1])
+        hidden3=np.zeros([self.config.hidden_size,1])
         for i in range(len(batch)):
+            active_units = self.dropout_histories[i]
             hidden*=0
             (label,feature)=batch[i]
             offset=0
             for j in range(self.num_tokens):
                 E_index=feature[j]
                 if j<self.config.word_tokens_num:
-                    hidden[:,0]+=np.dot(self.w[0][:,offset:offset+self.config.embedding_size],np.transpose(self.Eb[E_index,:]))
+                    hidden[active_units,0]+=np.dot(self.w[0][active_units,offset:offset+self.config.embedding_size],np.transpose(self.Eb[E_index,:]))
                     offset+=self.config.embedding_size
                 elif self.config.word_tokens_num-1<j<self.config.pos_tokens_up_bound:
-                    hidden[:,0]+=np.dot(self.w[0][:,offset:offset+self.config.pos_emb_size],np.transpose(self.Eb[E_index,:self.config.pos_emb_size]))
+                    hidden[active_units,0]+=np.dot(self.w[0][active_units,offset:offset+self.config.pos_emb_size],np.transpose(self.Eb[E_index,:self.config.pos_emb_size]))
                     offset+=self.config.pos_emb_size
                 elif j>=self.config.pos_tokens_up_bound:
-                    hidden[:,0]+=np.dot(self.w[0][:,offset:offset+self.config.label_emb_size],np.transpose(self.Eb[E_index,:self.config.label_emb_size]))
+                    hidden[active_units,0]+=np.dot(self.w[0][active_units,offset:offset+self.config.label_emb_size],np.transpose(self.Eb[E_index,:self.config.label_emb_size]))
                     offset+=self.config.label_emb_size
-            hidden=hidden+self.b[0]
+            hidden[active_units]+=self.b[0][active_units]
             #hidden1=np.dot(self.w[0],x)+self.b[0]
-            hidden3=np.power(hidden,3)
-            score=np.dot(self.w[1],hidden3)
+            hidden3[active_units]=np.power(hidden[active_units],3)
+            score=np.dot(self.w[1][:,active_units],hidden3[active_units])
 
             opt_label=-1
             for j in range(self.num_labels):
