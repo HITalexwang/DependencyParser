@@ -32,7 +32,7 @@ class Config:
         	self.pre_threads=1
 
         	self.training_file_name='data/samples/en-universal-dev-brown.conll'#en-universal-dev-brown.conll
-        	self.embedding_file_name='data/embeddings/embed'#word_embeddings.txt
+        	self.embedding_file_name='data/embeddings/en.50'#word_embeddings.txt
         	self.test_file_name='data/samples/test2'#en-universal-dev-brown.conll
         	self.save_model_name='data/models/test_model'
         	self.load_file_name='data/models/test_model0'

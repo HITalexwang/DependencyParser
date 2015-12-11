@@ -202,42 +202,44 @@ class MLP(object):
             offset=0
 
             #compute active units
-            active_units=self.dropout()
+            drop_units=self.dropout()
 
             if self.config.check:
-                dropout_histories.append(active_units)
+                dropout_histories.append(drop_units)
 
             time1=time.time()
             for j in xrange(self.config.word_tokens_num):
                 E_index=feature[j]
                 index=E_index*self.num_tokens+j
                 if index in self.pre_map:
-                    hidden[active_units,0]+=self.saved[active_units,self.pre_map[index]]
+                    hidden[:,0]+=self.saved[:,self.pre_map[index]]
                 else:
-                    hidden[active_units,0]+=np.dot(self.w[0][active_units,offset:offset+self.config.embedding_size],np.transpose(self.Eb[E_index,:]))
+                    hidden[:,0]+=np.dot(self.w[0][:,offset:offset+self.config.embedding_size],np.transpose(self.Eb[E_index,:]))
                 offset+=self.config.embedding_size
             for j in xrange(self.config.word_tokens_num,self.config.pos_tokens_up_bound):
                 E_index=feature[j]
                 index=E_index*self.num_tokens+j
                 if index in self.pre_map:
-                    hidden[active_units,0]+=self.saved[active_units,self.pre_map[index]]
+                    hidden[:,0]+=self.saved[:,self.pre_map[index]]
                 else:
-                    hidden[active_units,0]+=np.dot(self.w[0][active_units,offset:offset+self.config.pos_emb_size],np.transpose(self.Eb[E_index,:self.config.pos_emb_size]))
+                    hidden[:,0]+=np.dot(self.w[0][:,offset:offset+self.config.pos_emb_size],np.transpose(self.Eb[E_index,:self.config.pos_emb_size]))
                 offset+=self.config.pos_emb_size
             for j in xrange(self.config.pos_tokens_up_bound,self.config.num_tokens):
                 E_index=feature[j]
                 index=E_index*self.num_tokens+j
                 if index in self.pre_map:
-                    hidden[active_units,0]+=self.saved[active_units,self.pre_map[index]]
+                    hidden[:,0]+=self.saved[:,self.pre_map[index]]
                 else:
-                    hidden[active_units,0]+=np.dot(self.w[0][active_units,offset:offset+self.config.label_emb_size],np.transpose(self.Eb[E_index,:self.config.label_emb_size]))
+                    hidden[:,0]+=np.dot(self.w[0][:,offset:offset+self.config.label_emb_size],np.transpose(self.Eb[E_index,:self.config.label_emb_size]))
                 offset+=self.config.label_emb_size
 
-            hidden[active_units]=hidden[active_units]+self.b[0][active_units]
-            hidden3[active_units]=np.power(hidden[active_units],3)
+            hidden=hidden+self.b[0]
+            hidden3=np.power(hidden,3)
+            hidden3[drop_units]=0
+            hidden[drop_units]=0
 
             #softmax
-            score=np.dot(self.w[1][:,active_units],hidden3[active_units])
+            score=np.dot(self.w[1],hidden3)
 
             """
             opt_label=-1
@@ -298,44 +300,43 @@ class MLP(object):
             #print label_a.shape,score[:,0].shape
             delta=-(label_a-score[:,0]/sum2)/mini_batch_size
             delta[z_rows]=0
-            #print delta
-            #print grad_w[1][rows,:][:,active_units].shape,grad_w[1][rows,:][:,active_units]
-            #print np.outer(delta,hidden3[active_units,0]).shape
-            #print grad_w[1][rows,:][:,active_units]
-            grad_w[1][:,active_units]+=np.outer(delta,hidden3[active_units,0])
-            grad_hidden3[active_units,0]+=np.dot(delta,self.w[1][:,active_units])
-            #print grad_w[1][rows,:][:,active_units]
+            grad_w[1]+=np.outer(delta,hidden3[:,0])
+            grad_hidden3[:,0]+=np.dot(delta,self.w[1])
+            grad_hidden3[drop_units]=0
 
             grad_hidden*=0
-            grad_hidden[active_units]=grad_hidden3[active_units]*3*hidden[active_units]*hidden[active_units]
-            grad_b[0][active_units]+=grad_hidden[active_units]
+            grad_hidden=grad_hidden3*3*hidden*hidden
+            grad_hidden[drop_units]=0
+            grad_b[0]+=grad_hidden
+
+
             offset=0
             for j in xrange(self.config.word_tokens_num):
                 E_index=feature[j]
                 index=E_index*self.num_tokens+j
                 if index in self.pre_map:
-                    grad_saved[active_units,self.pre_map[index]]+=grad_hidden[active_units,0]
+                    grad_saved[:,self.pre_map[index]]+=grad_hidden[:,0]
                 else:
-                    grad_w[0][active_units,offset:offset+self.config.embedding_size]+=np.outer(grad_hidden[active_units,0],self.Eb[E_index,:])
-                    grad_Eb[E_index,:]+=np.dot(np.transpose(grad_hidden[active_units,0]),self.w[0][active_units,offset:offset+self.config.embedding_size])
+                    grad_w[0][:,offset:offset+self.config.embedding_size]+=np.outer(grad_hidden[:,0],self.Eb[E_index,:])
+                    grad_Eb[E_index,:]+=np.dot(np.transpose(grad_hidden[:,0]),self.w[0][:,offset:offset+self.config.embedding_size])
                 offset+=self.config.embedding_size
             for j in xrange(self.config.word_tokens_num,self.config.pos_tokens_up_bound):
                 E_index=feature[j]
                 index=E_index*self.num_tokens+j
                 if index in self.pre_map:
-                    grad_saved[active_units,self.pre_map[index]]+=grad_hidden[active_units,0]
+                    grad_saved[:,self.pre_map[index]]+=grad_hidden[:,0]
                 else:
-                    grad_w[0][active_units,offset:offset+self.config.pos_emb_size]+=np.outer(grad_hidden[active_units,0],self.Eb[E_index,:self.config.pos_emb_size])
-                    grad_Eb[E_index,:self.config.pos_emb_size]+=np.dot(np.transpose(grad_hidden[active_units,0]),self.w[0][active_units,offset:offset+self.config.pos_emb_size])
+                    grad_w[0][:,offset:offset+self.config.pos_emb_size]+=np.outer(grad_hidden[:,0],self.Eb[E_index,:self.config.pos_emb_size])
+                    grad_Eb[E_index,:self.config.pos_emb_size]+=np.dot(np.transpose(grad_hidden[:,0]),self.w[0][:,offset:offset+self.config.pos_emb_size])
                 offset+=self.config.pos_emb_size
             for j in xrange(self.config.pos_tokens_up_bound,self.config.num_tokens):
                 E_index=feature[j]
                 index=E_index*self.num_tokens+j
                 if index in self.pre_map:
-                    grad_saved[active_units,self.pre_map[index]]+=grad_hidden[active_units,0]
+                    grad_saved[:,self.pre_map[index]]+=grad_hidden[:,0]
                 else:
-                    grad_w[0][active_units,offset:offset+self.config.label_emb_size]+=np.outer(grad_hidden[active_units,0],self.Eb[E_index,:self.config.label_emb_size])
-                    grad_Eb[E_index,:self.config.label_emb_size]+=np.dot(np.transpose(grad_hidden[active_units,0]),self.w[0][active_units,offset:offset+self.config.label_emb_size])
+                    grad_w[0][:,offset:offset+self.config.label_emb_size]+=np.outer(grad_hidden[:,0],self.Eb[E_index,:self.config.label_emb_size])
+                    grad_Eb[E_index,:self.config.label_emb_size]+=np.dot(np.transpose(grad_hidden[:,0]),self.w[0][:,offset:offset+self.config.label_emb_size])
                 offset+=self.config.label_emb_size
 
             time9=time.time()
@@ -343,6 +344,7 @@ class MLP(object):
 
         loss/=len(mini_batch)
         #print grad_w[1]
+        
         cost=Cost(grad_Eb,grad_w[0],grad_b[0],grad_w[1],loss,correct,dropout_histories)
         costs[return_id]=(cost,grad_saved)
         #costs.put((cost,grad_saved))
@@ -408,8 +410,9 @@ class MLP(object):
 
     def dropout(self):
         rand=np.random.rand(self.config.hidden_size)
-        active_units=rand>=self.config.dropout_prob
-        return active_units
+        #active_units=rand>=self.config.dropout_prob
+        drop_units=rand<self.config.dropout_prob
+        return drop_units
         #print np.sum(np.ones(self.config.hidden_size)[self.active_units])
 
     def pre_compute(self,candidates):
@@ -529,25 +532,26 @@ class MLP(object):
         hidden=np.zeros([self.hidden_size,1])
         hidden3=np.zeros([self.config.hidden_size,1])
         for i in range(len(batch)):
-            active_units = self.dropout_histories[i]
+            drop_units = self.dropout_histories[i]
             hidden*=0
             (label,feature)=batch[i]
             offset=0
             for j in range(self.num_tokens):
                 E_index=feature[j]
                 if j<self.config.word_tokens_num:
-                    hidden[active_units,0]+=np.dot(self.w[0][active_units,offset:offset+self.config.embedding_size],np.transpose(self.Eb[E_index,:]))
+                    hidden[:,0]+=np.dot(self.w[0][:,offset:offset+self.config.embedding_size],np.transpose(self.Eb[E_index,:]))
                     offset+=self.config.embedding_size
                 elif self.config.word_tokens_num-1<j<self.config.pos_tokens_up_bound:
-                    hidden[active_units,0]+=np.dot(self.w[0][active_units,offset:offset+self.config.pos_emb_size],np.transpose(self.Eb[E_index,:self.config.pos_emb_size]))
+                    hidden[:,0]+=np.dot(self.w[0][:,offset:offset+self.config.pos_emb_size],np.transpose(self.Eb[E_index,:self.config.pos_emb_size]))
                     offset+=self.config.pos_emb_size
                 elif j>=self.config.pos_tokens_up_bound:
-                    hidden[active_units,0]+=np.dot(self.w[0][active_units,offset:offset+self.config.label_emb_size],np.transpose(self.Eb[E_index,:self.config.label_emb_size]))
+                    hidden[:,0]+=np.dot(self.w[0][:,offset:offset+self.config.label_emb_size],np.transpose(self.Eb[E_index,:self.config.label_emb_size]))
                     offset+=self.config.label_emb_size
-            hidden[active_units]+=self.b[0][active_units]
+            hidden+=self.b[0]
             #hidden1=np.dot(self.w[0],x)+self.b[0]
-            hidden3[active_units]=np.power(hidden[active_units],3)
-            score=np.dot(self.w[1][:,active_units],hidden3[active_units])
+            hidden3=np.power(hidden,3)
+            hidden3[drop_units]=0
+            score=np.dot(self.w[1],hidden3)
 
             opt_label=-1
             for j in range(self.num_labels):
