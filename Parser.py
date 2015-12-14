@@ -45,16 +45,21 @@ class Parser:
 		self.setup_classifier_for_trainning(sents,trees,True)
 
 		#self.classifier.train(self.config.iter)
-		opt_result_score=0
-		opt_iter=0
-		for i in range(self.config.out_iter):
+		opt_uas=0
+		opt_las=0
+		self.load_test_data(self.config.test_file_name)
+		for i in range(self.config.iter):
 			print "\n-----outer iter:",i,"-----"
-			self.classifier.train(self.config.checkiter)
-			result=self.test(self.config.test_file_name)
-			tmp_score=result['UAS']*result['LAS']/(result['UAS']+result['LAS'])
-			if tmp_score>opt_result_score:
-				opt_result_score=tmp_score
-				opt_iter=i
+			self.classifier.train(1)
+			result=self.test()
+			#tmp_score=result['UAS']*result['LAS']/(result['UAS']+result['LAS'])
+			if result['UAS']>opt_uas:
+				opt_uas=result['UAS']
+				opt_las=max(result['LAS'],opt_las)
+				self.save_model(self.config.save_model_name+str(i))
+			elif result['LAS']>opt_las:
+				opt_uas=max(result['UAS'],opt_uas)
+				opt_las=result['LAS']
 				self.save_model(self.config.save_model_name+str(i))
 		#test_tree=self.predict(sents[0])
 		#test_tree.print_tree()
@@ -62,6 +67,34 @@ class Parser:
 		#c=Configuration(sents[0])
 		#features=self.get_features(c)
 		#scores=self.classifier.compute_scores(features)
+
+	def load_model_and_train(self):
+		self.load_model(parser.config.load_model_name)
+		print "---loading training file---"
+		sents=[]
+		trees=[]
+		self.load_file(self.config.training_file_name,sents,trees,True)#en-universal-dev-brown.conll
+		self.system=ArcStandard.ArcStandard(self.known_labels,'CN',True)
+		dataset=self.gen_train_samples(sents,trees)
+		(features,labels)=self.preprocess_dataset(dataset)
+		self.classifier.set_samples(self.pre_computed_ids,features,labels)
+
+		opt_uas=0
+		opt_las=0
+		self.load_test_data(self.config.test_file_name)
+		for i in range(self.config.iter):
+			print "\n-----outer iter:",i,"-----"
+			self.classifier.train(1)
+			result=self.test()
+			#tmp_score=result['UAS']*result['LAS']/(result['UAS']+result['LAS'])
+			if result['UAS']>opt_uas:
+				opt_uas=result['UAS']
+				opt_las=max(result['LAS'],opt_las)
+				self.save_model(self.config.save_model_name+str(i))
+			elif result['LAS']>opt_las:
+				opt_uas=max(result['UAS'],opt_uas)
+				opt_las=result['LAS']
+				self.save_model(self.config.save_model_name+str(i))
 
 	def load_file(self,file,sents,trees,labeled):
 		sent=DependencySent.DependencySent()
@@ -478,22 +511,23 @@ class Parser:
 
 		self.classifier=MLP.MLP([self.embedding_size*self.num_tokens,self.hidden_size,2*n_label+1],self.Eb,self.W1,self.b1,self.W2)
 
-	def test(self,test_filename):
+	def load_test_data(self,test_filename):
 		print "---loading test file from:",test_filename,"---"
-		test_sents=[]
-		test_trees=[]
-		self.load_file(test_filename,test_sents,test_trees,True)#en-universal-dev-brown.conll
+		self.test_sents=[]
+		self.test_trees=[]
+		self.load_file(test_filename,self.test_sents,self.test_trees,True)#en-universal-dev-brown.conll
 
+	def test(self):
+		self.system=ArcStandard.ArcStandard(self.known_labels,'CN',True)
+		print "---testing the model---"
 		#test_sents=sent
 		#test_trees=tree
-
-		self.print_tree_states(test_trees)
-		n_sents=len(test_sents)
+		self.print_tree_states(self.test_trees)
+		n_sents=len(self.test_sents)
 		predicted=[]
-		self.system=ArcStandard.ArcStandard(self.known_labels,'CN',True)
-		for test_sent in test_sents:
+		for test_sent in self.test_sents:
 			predicted.append(self.predict(test_sent))
-		result=self.evaluate(test_sents,predicted,test_trees)
+		result=self.evaluate(self.test_sents,predicted,self.test_trees)
 		print result
 		return result
 
@@ -559,7 +593,10 @@ if __name__=="__main__":
 	if parser.config.check:
 		parser.check_gradient()	
 	elif parser.config.is_test:
-		parser.load_model(parser.config.load_file_name)
-		parser.test(parser.config.test_file_name)
+		parser.load_model(parser.config.load_model_name)
+		parser.load_test_data(parser.config.test_file_name)
+		parser.test()
+	elif parser.config.load_and_train:
+		parser.load_model_and_train()
 	else:
 		parser.train()

@@ -96,6 +96,14 @@ class MLP(object):
     def __setstate__(self, state):
             self.__dict__.update(state)
     """
+    def set_samples(self,pre_computed_ids,features,labels):
+        self.pre_computed_ids=pre_computed_ids
+        self.pre_map={}
+        for i in xrange(len(pre_computed_ids)):
+            self.pre_map[pre_computed_ids[i]]=i
+        self.grad_saved=np.zeros([self.hidden_size,len(self.pre_map)])
+        self.features=features
+        self.labels=labels
 
     def train(self,iter):
         start=time.time()
