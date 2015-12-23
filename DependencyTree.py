@@ -73,6 +73,111 @@ class DependencyTree:
 				return False
 		return True
 
+	def get_projective_order(self):
+		self.projective_order={}
+		self.pro_order=0
+		self.inorder_traversal(0)
+		return self.projective_order
+		
+	def inorder_traversal(self,n):
+		for i in range(1,n):
+			if self.get_head(i)==n:
+				self.inorder_traversal(i)
+		self.projective_order[n]=self.pro_order
+		self.pro_order+=1
+		for i in range(n+1,self.n+1):
+			if self.get_head(i)==n:
+				self.inorder_traversal(i)
+
+	def get_mpc(self):
+		self.mpc=[-1]
+		self.comp_num=0
+		for i in  range(1,self.n+1):
+			self.mpc.append(-1)
+		self.visit_node(0)
+		return self.mpc
+
+	def visit_node(self,n):
+		split_flag=False
+		left=n
+		right=n
+		for i in range(n-1,0,-1):
+			if self.get_head(i)==n:
+				child=self.visit_node(i)
+				# if get None from child, pass None to parent, BUT continue merge child of the node itself
+				if child is None:
+					split_flag=True
+				else:
+					(l,r)=child
+					#merge the child to this node
+					if right==l-1:
+						right=r
+					elif left==r+1:
+						left=l
+					# if can not merge(not in neighborhood),plot the childs on the list,pass None to parent
+					else:
+						split_flag=True
+						self.comp_num+=1
+						for i in range(l,r+1):
+							self.mpc[i]=self.comp_num
+		for i in range(n+1,self.n+1):
+			if self.get_head(i)==n:
+				child=self.visit_node(i)
+				if child is None:
+					split_flag=True
+				else:
+					(l,r)=child
+					if right==l-1:
+						right=r
+					elif left==r+1:
+						left=l
+					else:
+						split_flag=True
+						self.comp_num+=1
+						for i in range(l,r+1):
+							self.mpc[i]=self.comp_num
+		#if the child returns none or there is a split node in childs,plot the combined childs of this node 
+		#and return None to parent to convey the message that there exists a split node on the path
+		if split_flag==True:
+			self.comp_num+=1
+			for i in range(left,right+1):
+				self.mpc[i]=self.comp_num
+			return None
+		else:
+			return (left,right)
+
 	def print_tree(self):
 		for i in range(0,self.n+1):
 			print i,self.get_head(i),',',self.get_label(i)
+
+"""
+	def visit_node(self,n):
+		child_comp=[]
+		for i in range(n-1,0,-1):
+			if self.get_head(i)==n:
+				child_comp.extend(self.visit_node(i))
+		for i in range(n+1,self.n+1):
+			if self.get_head(i)==n:
+				child_comp.extend(self.visit_node(i))
+		if n==0:
+			self.mpc[0]=0
+			child_comp.append(0)
+			return child_comp
+		elif n==self.n:
+			self.comp_num+=1
+			self.mpc[n]=self.comp_num
+			child_comp.append(self.comp_num)
+			return child_comp
+		elif not self.mpc[n-1]==self.comp_num and not self.mpc[n+1]==self.comp_num:
+			for comp in child_comp:
+				if self.mpc[n-1]==comp or self.mpc[n+1]==comp:
+					self.mpc[n]=comp
+					return []
+			self.comp_num+=1
+			self.mpc[n]=self.comp_num
+			child_comp.append(self.comp_num)
+			return child_comp
+		else:
+			self.mpc[n]=self.comp_num
+			return child_comp"""
+			

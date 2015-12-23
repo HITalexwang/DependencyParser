@@ -1,8 +1,8 @@
 class Config:
 	def __init__(self):
 		self.check=False
-		self.is_test=False
-		self.load_and_train=True
+		self.is_test=True
+		self.load_and_train=False
 		
 		self.iter=10
 		self.checkiter=5
@@ -16,8 +16,8 @@ class Config:
 		self.pos_emb_size=50
 		self.label_emb_size=50
 		self.num_pre_computed=100000
-		self.hidden_size=400
-		self.dropout_prob=0.5
+		self.hidden_size=200
+		self.dropout_prob=0
 		self.word_tokens_num=18
 		self.pos_tokens_num=18
 		self.label_tokens_num=12
@@ -34,6 +34,6 @@ class Config:
 
         	self.training_file_name='data/samples/test1'#en-universal-dev-brown.conll
         	self.embedding_file_name='data/embeddings/en.50'#word_embeddings.txt
-        	self.test_file_name='data/samples/test1'#en-universal-dev-brown.conll
+        	self.test_file_name='data/samples/en-universal-test-brown.conll'#en-universal-dev-brown.conll
         	self.save_model_name='data/models/test_model'
-        	self.load_model_name='data/models/test_model0'
+        	self.load_model_name='data/models/h200_e50_50_50_model3'

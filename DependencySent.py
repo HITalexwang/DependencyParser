@@ -13,4 +13,4 @@ class DependencySent:
 
 	def print_info(self):
 		print "n=",self.n
-		print self.words,',',self.poss,',',self.clusters
+		print self.words,',',self.poss#,',',self.clusters

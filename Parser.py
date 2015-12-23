@@ -38,6 +38,7 @@ class Parser:
 
 		(embed_ids,embeddings)=self.read_embed_file(self.config.embedding_file_name)#word_embeddings.txt
 		(known_words,known_poss,known_labels)=self.gen_dictionaries(sents,trees,True)
+		print known_words
 		ldict=known_labels
 		#print ldict
 		#ldict.remove('-NULL-')  #use -NULL- to denote the ROOT node's arc label
@@ -100,26 +101,41 @@ class Parser:
 		sent=DependencySent.DependencySent()
 		tree=DependencyTree.DependencyTree()
 		data=open(file)
+		multi_head_flag=False
+		multi_head_cnt=0
 		for line in data:
 			sep_line=line.strip().split()
 			#print sep_line
 			if len(sep_line)<10:
-				sents.append(sent)
-				trees.append(tree)
+				if not multi_head_flag:
+					sents.append(sent)
+					trees.append(tree)
+				else:
+					multi_head_cnt+=1
 				sent=DependencySent.DependencySent()
 				tree=DependencyTree.DependencyTree()
+				multi_head_flag=False
 			else:
+				num=int(sep_line[0])
 				word=sep_line[1]
 				pos=sep_line[3]
 				cluster=sep_line[5]
 				deprel=sep_line[7]
 				head=int(sep_line[6])
-				sent.add(word,pos,cluster)
-				if labeled:
-					tree.add(head,deprel)
+				if deprel=='Root':
+					head=0
+				if num==sent.n+1:
+					sent.add(word,pos,cluster)
+					if labeled:
+						tree.add(head,deprel)
+					else:
+						tree.add(head,'-UNKNOWN-')
 				else:
-					tree.add(head,'-UNKNOWN-')
+					if not multi_head_flag:
+						multi_head_flag=True
+					#print "multi head!",word
 		data.close()
+		print "There are ",multi_head_cnt,"trees have multi head"
 
 	def print_tree_states(self,trees):
 		print "---tree states---"
@@ -129,6 +145,8 @@ class Parser:
 		for i in range(len(trees)):
 			if not trees[i].is_tree():
 				non_trees+=1
+				trees[i].print_tree()
+				print "\n"
 			elif not trees[i].is_projective():
 				non_proj+=1
 		print non_trees,"trees are illegal"
@@ -554,19 +572,28 @@ class Parser:
 		tree=c.tree
 		return tree
 
-	def evaluate(self,sents,predicted,gold_trees):
+	def evaluate(self,sents,pred_trees,gold_trees):
 		sample_sum=0
 		uas_cnt=0
 		las_cnt=0
-		for i in range(len(gold_trees)):
-			sample_sum+=gold_trees[i].n
+		puncs={"``":None, "''":None, ".":None, ",":None, ":":None}
+		for i in range(len(pred_trees)):
+			"""
+			if not pred_trees[i].n==sents[i].n:
+				print "Error: Tree",i,"has incorrect number of nodes!"
+			if not pred_trees[i].is_tree():
+				print "Error: Tree",i,"is not tree!"
+			"""
 			for j in range(1,gold_trees[i].n+1):
-				if predicted[i].get_head(j)==gold_trees[i].get_head(j):
-					if predicted[i].get_head(j)==-1:
-						print "error ! out of range!"
-					elif predicted[i].get_label(j)==gold_trees[i].get_label(j):
-						las_cnt+=1
-					uas_cnt+=1
+				if sents[i].poss[j-1] not in puncs:
+					sample_sum+=1
+					if pred_trees[i].get_head(j)==gold_trees[i].get_head(j):
+						if pred_trees[i].get_head(j)==-1:
+							print "error ! out of range!"
+						elif pred_trees[i].get_label(j)==gold_trees[i].get_label(j):
+							las_cnt+=1
+						uas_cnt+=1
+				
 		result={}
 		result['UAS']=uas_cnt/float(sample_sum)
 		result['LAS']=las_cnt/float(sample_sum)

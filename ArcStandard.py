@@ -17,6 +17,7 @@ class ArcStandard:
 		for i in range(len(self.labels)):
 			self.transitions.append('R('+self.labels[i]+')')
 		self.transitions.append('S')
+		self.transitions.append('W')#denote swap
 		"""
 		print "transition types:"
 		for i in range(len(self.transitions)):
