@@ -1,7 +1,7 @@
 class Config:
 	def __init__(self):
 		self.check=False
-		self.is_test=True
+		self.is_test=False
 		self.load_and_train=False
 		
 		self.iter=10
@@ -32,7 +32,7 @@ class Config:
         	self.training_threads=6
         	self.pre_threads=1
 
-        	self.training_file_name='data/samples/test1'#en-universal-dev-brown.conll
+        	self.training_file_name='data/samples/non-proj-sents.txt'#en-universal-dev-brown.conll
         	self.embedding_file_name='data/embeddings/en.50'#word_embeddings.txt
         	self.test_file_name='data/samples/en-universal-test-brown.conll'#en-universal-dev-brown.conll
         	self.save_model_name='data/models/test_model'

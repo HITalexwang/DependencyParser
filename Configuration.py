@@ -19,6 +19,12 @@ class Configuration:
 		self.stack.append(k)
 		return True
 
+	def swap(self):
+		k=self.get_stack(1)
+		self.remove_second_top_stack()
+		self.buffer.insert(0,k)
+		return True
+
 	def remove_top_stack(self):
 		n_stack=self.get_stack_size()
 		if n_stack<1:
