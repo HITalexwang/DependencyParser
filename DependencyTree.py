@@ -3,6 +3,7 @@ class DependencyTree:
 		self.n=0
 		self.heads=[-1]
 		self.labels=['-NULL-']#used to be '-UNKNOWN-'???
+		self.has_compute_proj=False
 
 	def add(self,h,l):
 		self.n+=1
@@ -56,10 +57,17 @@ class DependencyTree:
 		return True
 
 	def is_projective(self):
-		if (not self.is_tree()):
-			return False
-		self.counter=-1
-		return self.visit_tree(0)
+		if not self.has_compute_proj:
+			if (not self.is_tree()):
+				self.is_projective_flag=False
+				self.has_compute_proj=True
+				return False
+			self.counter=-1
+			self.is_projective_flag=self.visit_tree(0)
+			self.has_compute_proj=True
+			return self.is_projective_flag
+		else:
+			return self.is_projective_flag
 
 	def visit_tree(self,w): #??? dont understand
 		for k in range(1,w):

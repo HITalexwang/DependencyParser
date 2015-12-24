@@ -46,13 +46,12 @@ class Parser:
 		self.setup_classifier_for_trainning(sents,trees,True)
 
 		#self.classifier.train(self.config.iter)
-		"""
 		opt_uas=0
 		opt_las=0
 		self.load_test_data(self.config.test_file_name)
 		for i in range(self.config.iter):
 			print "\n-----outer iter:",i,"-----"
-			self.classifier.train(1)
+			self.classifier.train(5)
 			result=self.test()
 			#tmp_score=result['UAS']*result['LAS']/(result['UAS']+result['LAS'])
 			if result['UAS']>opt_uas:
@@ -63,7 +62,6 @@ class Parser:
 				opt_uas=max(result['UAS'],opt_uas)
 				opt_las=result['LAS']
 				self.save_model(self.config.save_model_name+str(i))
-		"""
 		#test_tree=self.predict(sents[0])
 		#test_tree.print_tree()
 		#self.load_model('model')
@@ -304,53 +302,29 @@ class Parser:
 			if i%1000==0:
 				print "have processed",i,"sents"
 		#only use projective tree
-			if trees[i].is_projective():
-				c=Configuration.Configuration(sents[i])
-				while(not self.system.is_terminal(c)):
-					oracle=self.system.get_oracle(c,trees[i])
-					features=self.get_features(c)
-					label=[]
-					for k in range(num_trans):
-						label.append(-1)
-					for j in range(num_trans):
-						action=self.system.transitions[j]
-						if action==oracle:
-							label[j]=1
-						elif self.system.can_apply(c,action):
-							label[j]=0
-					ds_train.add_sample(features,label)
-					for j in range(len(features)):
-						feature_id=features[j]*len(features)+j
-						#print features[j],j
-						if feature_id not in tokpos_count:
-							tokpos_count[feature_id]=1
-						else:
-							tokpos_count[feature_id]+=1
-					self.system.apply(c,oracle)
-			else:
-				c=Configuration.Configuration(sents[i])
-				while(not self.system.is_terminal(c)):
-					oracle=self.system.get_oracle(c,trees[i])
-					#print oracle
-					features=self.get_features(c)
-					label=[]
-					for k in range(num_trans):
-						label.append(-1)
-					for j in range(num_trans):
-						action=self.system.transitions[j]
-						if action==oracle:
-							label[j]=1
-						elif self.system.can_apply(c,action):
-							label[j]=0
-					ds_train.add_sample(features,label)
-					for j in range(len(features)):
-						feature_id=features[j]*len(features)+j
-						#print features[j],j
-						if feature_id not in tokpos_count:
-							tokpos_count[feature_id]=1
-						else:
-							tokpos_count[feature_id]+=1
-					self.system.apply(c,oracle)
+			#if trees[i].is_projective():
+			c=Configuration.Configuration(sents[i])
+			while(not self.system.is_terminal(c)):
+				oracle=self.system.get_oracle(c,trees[i])
+				features=self.get_features(c)
+				label=[]
+				for k in range(num_trans):
+					label.append(-1)
+				for j in range(num_trans):
+					action=self.system.transitions[j]
+					if action==oracle:
+						label[j]=1
+					elif self.system.can_apply(c,action):
+						label[j]=0
+				ds_train.add_sample(features,label)
+				for j in range(len(features)):
+					feature_id=features[j]*len(features)+j
+					#print features[j],j
+					if feature_id not in tokpos_count:
+						tokpos_count[feature_id]=1
+					else:
+						tokpos_count[feature_id]+=1
+				self.system.apply(c,oracle)
 
 		print "##train examples num:",ds_train.n,"##"
 		temp=copy.deepcopy(tokpos_count)
